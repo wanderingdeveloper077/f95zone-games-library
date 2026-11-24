@@ -1,0 +1,165 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 340px;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background: #0a0a0a;
+  color: #f4f4f5;
+  color-scheme: dark;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #3f3f46;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #52525b;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: #e11d48;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.container {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #27272a;
+  padding-bottom: 10px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: #f4f4f5;
+  padding: 2px;
+  object-fit: contain;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.pill-ok {
+  background: #064e3b;
+  color: #6ee7b7;
+}
+
+.pill-err {
+  background: #450a0a;
+  color: #fca5a5;
+}
+
+.card {
+  background: #141416;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+input {
+  width: 100%;
+  background: #09090b;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #fafafa;
+  font-size: 12px;
+}
+
+button {
+  background: #27272a;
+  color: #fafafa;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #3f3f46;
+}
+
+button.primary {
+  background: #e11d48;
+  border-color: #e11d48;
+}
+
+button.primary:hover {
+  background: #be123c;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-msg {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #18181b;
+  color: #e4e4e7;
+}

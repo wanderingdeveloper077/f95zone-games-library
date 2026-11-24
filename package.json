@@ -1,0 +1,28 @@
+{
+  "name": "game-library-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "build:app": "node scripts/build-app.mjs",
+    "build:mac": "node scripts/build-app.mjs --target=mac",
+    "build:mac:dmg": "node scripts/build-app.mjs --target=mac --dmg",
+    "build:mac:arm64": "node scripts/build-app.mjs --target=mac --arch=arm64",
+    "build:mac:arm64:dmg": "node scripts/build-app.mjs --target=mac --arch=arm64 --dmg",
+    "start:app": "node scripts/launch.cjs",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "bundle:win": "node scripts/bundle.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "resedit": "^3.1.1",
+    "tsx": "^4.23.0",
+    "turbo": "^2.11.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.1"
+  }
+}

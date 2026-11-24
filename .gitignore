@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.output/
+.wxt/
+.turbo/
+data/
+release/
+_reference-repo/
+*.tsbuildinfo
+.env
+.env.local

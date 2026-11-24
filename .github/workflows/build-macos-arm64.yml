@@ -1,0 +1,46 @@
+name: Build macOS Apple Silicon DMG
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-macos-arm64:
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js (arm64)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          architecture: "arm64"
+
+      - name: Verify native Apple Silicon Node architecture
+        run: |
+          uname -m
+          node -v
+          node -p "process.arch"
+
+      - name: Build Apple Silicon .app and .dmg
+        run: |
+          chmod +x scripts/build-macos.sh
+          ./scripts/build-macos.sh --arch=arm64
+
+      - name: Verify Apple Silicon Mach-O & Code Signature
+        run: |
+          lipo -archs "release/standalone/Game Library Manager.app/Contents/MacOS/Game Library Manager"
+          lipo -archs "release/standalone/Game Library Manager.app/Contents/Frameworks/better_sqlite3.node"
+          codesign --verify --deep --strict "release/standalone/Game Library Manager.app"
+          hdiutil verify "release/standalone/Game Library Manager-"*.dmg
+
+      - name: Upload macOS arm64 DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Game-Library-Manager-macos-arm64
+          path: release/standalone/Game Library Manager-*.dmg
