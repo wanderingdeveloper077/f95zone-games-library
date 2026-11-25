@@ -178,4 +178,117 @@ describe("Fastify API security, pairing, CRUD, and static protection", () => {
     });
     expect(traversal.statusCode).toBe(400);
   });
+
+  it("supports limit/offset pagination metadata on GET /api/games", async () => {
+    const { app } = await createTestServer();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/games",
+      payload: { custom: true, name: "Alpha Game", version: "1.0" },
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/games",
+      payload: { custom: true, name: "Beta Game", version: "1.0" },
+    });
+
+    const page1 = await app.inject({
+      method: "GET",
+      url: "/api/games?sort=name&dir=asc&limit=1&offset=0",
+    });
+    expect(page1.statusCode).toBe(200);
+    expect(page1.json()).toMatchObject({
+      total: 2,
+      hasMore: true,
+      nextOffset: 1,
+    });
+    expect(page1.json().games).toHaveLength(1);
+    expect(page1.json().games[0].name).toBe("Alpha Game");
+
+    const page2 = await app.inject({
+      method: "GET",
+      url: "/api/games?sort=name&dir=asc&limit=1&offset=1",
+    });
+    expect(page2.statusCode).toBe(200);
+    expect(page2.json()).toMatchObject({
+      total: 2,
+      hasMore: false,
+      nextOffset: null,
+    });
+    expect(page2.json().games).toHaveLength(1);
+    expect(page2.json().games[0].name).toBe("Beta Game");
+  });
+
+  it("filters GET /api/games by installed, finished, and tags", async () => {
+    const { app } = await createTestServer();
+
+    const g1Res = await app.inject({
+      method: "POST",
+      url: "/api/games",
+      payload: { custom: true, name: "Installed Finished", version: "1.0" },
+    });
+    const g1Id = g1Res.json().added[0].id as number;
+    await app.inject({
+      method: "PATCH",
+      url: `/api/games/${g1Id}`,
+      payload: { installedVersion: "1.0", finishedVersion: "1.0" },
+    });
+
+    const g2Res = await app.inject({
+      method: "POST",
+      url: "/api/games",
+      payload: { custom: true, name: "Outdated Unfinished", version: "2.0" },
+    });
+    const g2Id = g2Res.json().added[0].id as number;
+    await app.inject({
+      method: "PATCH",
+      url: `/api/games/${g2Id}`,
+      payload: { installedVersion: "1.0" },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/games",
+      payload: { custom: true, name: "Not Installed", version: "1.0" },
+    });
+
+    const upToDate = await app.inject({
+      method: "GET",
+      url: "/api/games?installed=up_to_date",
+    });
+    expect(upToDate.json().games.map((g: { name: string }) => g.name)).toEqual([
+      "Installed Finished",
+    ]);
+
+    const outdated = await app.inject({
+      method: "GET",
+      url: "/api/games?installed=outdated",
+    });
+    expect(outdated.json().games.map((g: { name: string }) => g.name)).toEqual([
+      "Outdated Unfinished",
+    ]);
+
+    const notInstalled = await app.inject({
+      method: "GET",
+      url: "/api/games?installed=not_installed",
+    });
+    expect(
+      notInstalled.json().games.map((g: { name: string }) => g.name)
+    ).toEqual(["Not Installed"]);
+
+    const finished = await app.inject({
+      method: "GET",
+      url: "/api/games?finished=finished",
+    });
+    expect(finished.json().games.map((g: { name: string }) => g.name)).toEqual([
+      "Installed Finished",
+    ]);
+
+    const tagFiltered = await app.inject({
+      method: "GET",
+      url: "/api/games?tags=999999",
+    });
+    expect(tagFiltered.json().games).toEqual([]);
+  });
 });
