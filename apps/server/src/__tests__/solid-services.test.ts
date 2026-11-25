@@ -505,6 +505,8 @@ describe("GamesService executables & launcher", () => {
       ],
     });
     expect(updated?.executables).toEqual(["C:\\Games\\Playable\\Game.exe"]);
+    expect(updated?.installedVersion).toBe("1.0");
+    expect(updated?.hasUpdate).toBe(false);
 
     const unregistered = await service.launchGame(gameId, "C:\\Other\\Evil.exe");
     expect(unregistered).toMatchObject({
