@@ -37,7 +37,9 @@ export function useSseEvents(): void {
         case "job_completed": {
           dispatch(sseJobCompleted());
           const { filter } = appStore.getState().games;
-          void dispatch(fetchGamesThunk(filter));
+          void dispatch(
+            fetchGamesThunk({ filter, preserveLoadedCount: true })
+          );
           break;
         }
         case "job_failed":
@@ -45,7 +47,9 @@ export function useSseEvents(): void {
           break;
         case "game_updated": {
           const { filter, selectedGameId } = appStore.getState().games;
-          void dispatch(fetchGamesThunk(filter));
+          void dispatch(
+            fetchGamesThunk({ filter, preserveLoadedCount: true })
+          );
           if (selectedGameId === event.gameId) {
             void dispatch(fetchGameDetailThunk(event.gameId));
           }
@@ -53,7 +57,9 @@ export function useSseEvents(): void {
         }
         case "games_added": {
           const { filter } = appStore.getState().games;
-          void dispatch(fetchGamesThunk(filter));
+          void dispatch(
+            fetchGamesThunk({ filter, preserveLoadedCount: true })
+          );
           break;
         }
         case "account_updated":
@@ -62,10 +68,39 @@ export function useSseEvents(): void {
       }
     };
 
-    return subscribeToEvents(`${API_BASE_URL}/api/events`, {
-      onOpen: () => dispatch(sseConnectionChanged(true)),
-      onError: () => dispatch(sseConnectionChanged(false)),
-      onEvent: handleEvent,
-    });
+    const connect = () =>
+      subscribeToEvents(`${API_BASE_URL}/api/events`, {
+        onOpen: () => dispatch(sseConnectionChanged(true)),
+        onError: () => dispatch(sseConnectionChanged(false)),
+        onEvent: handleEvent,
+      });
+
+    let closeSse: (() => void) | null = connect();
+
+    // Close the SSE stream immediately when leaving/closing the tab so bfcache
+    // does not delay server idle shutdown.
+    const handlePageHide = () => {
+      closeSse?.();
+      closeSse = null;
+      dispatch(sseConnectionChanged(false));
+    };
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted && !closeSse) {
+        closeSse = connect();
+        const { filter } = appStore.getState().games;
+        void dispatch(fetchGamesThunk({ filter, preserveLoadedCount: true }));
+      }
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow);
+      closeSse?.();
+      closeSse = null;
+    };
   }, [dispatch, appStore]);
 }
