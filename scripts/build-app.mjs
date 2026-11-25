@@ -544,6 +544,8 @@ async function copyExtensionsAndDocs() {
     "  covers are saved in the ./data directory next to the executable.",
     "- macOS: Runtime data is saved in",
     `  ~/Library/Application Support/${APP_NAME}`,
+    "- Extracted Games: Extract game folders into ./games next to the executable",
+    `  (macOS: ~/Library/Application Support/${APP_NAME}/games) to auto-register their Play path.`,
   ].join("\r\n");
 
   await fsp.writeFile(path.join(outDir, "README.txt"), readme, "utf8");
@@ -558,7 +560,7 @@ async function cleanTargetsPreservingData(targets) {
   };
   if (fs.existsSync(outDir)) {
     for (const entry of await fsp.readdir(outDir)) {
-      if (entry === "data") continue;
+      if (entry === "data" || entry === "games") continue;
       const removeWin =
         targets.includes("win") && entry === `${APP_NAME}.exe`;
       const removeMac =
@@ -587,6 +589,7 @@ async function cleanTargetsPreservingData(targets) {
     }
   }
   await fsp.mkdir(path.join(outDir, "data", "covers"), { recursive: true });
+  await fsp.mkdir(path.join(outDir, "games"), { recursive: true });
 }
 
 async function main() {
