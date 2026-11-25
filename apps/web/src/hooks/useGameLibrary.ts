@@ -1,5 +1,5 @@
 import type { GameSummary } from "@game-library/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getNextFinishedVersion,
   getNextInstalledVersion,
@@ -7,8 +7,10 @@ import {
 import type { GamesFilterState } from "@/services/gamesService";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
+  type LibraryViewMode,
   clearGamesError,
   fetchGamesThunk,
+  fetchMoreGamesThunk,
   launchGameThunk,
   refreshGamesThunk,
   setFilter,
@@ -20,7 +22,11 @@ import {
 export function useGameLibrary() {
   const dispatch = useAppDispatch();
   const games = useAppSelector((s) => s.games.items);
+  const totalCount = useAppSelector((s) => s.games.totalCount);
+  const updatesCount = useAppSelector((s) => s.games.updatesCount);
+  const hasMore = useAppSelector((s) => s.games.hasMore);
   const loading = useAppSelector((s) => s.games.loading);
+  const loadingMore = useAppSelector((s) => s.games.loadingMore);
   const error = useAppSelector((s) => s.games.error);
   const filter = useAppSelector((s) => s.games.filter);
   const viewMode = useAppSelector((s) => s.games.viewMode);
@@ -32,11 +38,6 @@ export function useGameLibrary() {
     void dispatch(fetchGamesThunk(filter));
   }, [dispatch, filter]);
 
-  const updatesCount = useMemo(
-    () => games.filter((g) => g.hasUpdate).length,
-    [games]
-  );
-
   const updateFilter = useCallback(
     (next: GamesFilterState) => {
       dispatch(setFilter(next));
@@ -45,7 +46,7 @@ export function useGameLibrary() {
   );
 
   const changeViewMode = useCallback(
-    (mode: "grid" | "list") => {
+    (mode: LibraryViewMode) => {
       dispatch(setViewMode(mode));
     },
     [dispatch]
@@ -116,16 +117,23 @@ export function useGameLibrary() {
     setChooseExeGame(null);
   }, []);
 
+  const loadMore = useCallback(() => {
+    void dispatch(fetchMoreGamesThunk());
+  }, [dispatch]);
+
   return {
     games,
+    totalCount,
+    updatesCount,
+    hasMore,
     loading,
+    loadingMore,
     error,
     filter,
     viewMode,
     refreshing,
     launchingGameId,
     chooseExeGame,
-    updatesCount,
     updateFilter,
     changeViewMode,
     selectGame,
@@ -133,6 +141,7 @@ export function useGameLibrary() {
     toggleFinished,
     playGame,
     closeChooseExe,
+    loadMore,
     refreshAll,
     dismissError,
   };
