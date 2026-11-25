@@ -1,6 +1,7 @@
 import { type SseEvent, TagHighlight } from "@game-library/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
+  countActiveAdvancedFilters,
   formatUnixDate,
   getGameInstallState,
   getNextFinishedVersion,
@@ -102,6 +103,28 @@ describe("gamePresentation utilities", () => {
   it("formats zero timestamps as em dash and valid seconds to a date string", () => {
     expect(formatUnixDate(0)).toBe("—");
     expect(formatUnixDate(1_700_000_000)).not.toBe("—");
+  });
+
+  it("counts active advanced filters across status, engine type, install/finish states, and tags", () => {
+    expect(
+      countActiveAdvancedFilters({
+        status: "",
+        type: "",
+        installed: "all",
+        finished: "all",
+        tags: [],
+      })
+    ).toBe(0);
+
+    expect(
+      countActiveAdvancedFilters({
+        status: "2",
+        type: "14",
+        installed: "outdated",
+        finished: "unfinished",
+        tags: [12, 45],
+      })
+    ).toBe(6);
   });
 });
 
