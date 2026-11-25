@@ -1,11 +1,11 @@
-import { buildApp } from "./app.js";
 import { resolveConfig } from "./config.js";
 import { isBundledApp } from "./runtime/embedded.js";
 import { openBrowser } from "./runtime/openBrowser.js";
+import { createSleepWakeServer } from "./runtime/sleepWakeServer.js";
 
 async function main() {
   const config = resolveConfig();
-  const { app, closeResources } = await buildApp(config, { startWorker: true });
+  const gateway = createSleepWakeServer(config);
   const appUrl = `http://${config.host}:${config.port}/`;
   const shouldOpenBrowser =
     process.env.OPEN_BROWSER !== undefined
@@ -16,7 +16,7 @@ async function main() {
   const shutdown = async () => {
     if (closing) return;
     closing = true;
-    await closeResources();
+    await gateway.shutdown();
     process.exit(0);
   };
 
@@ -24,10 +24,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown());
 
   try {
-    await app.listen({
-      host: config.host,
-      port: config.port,
-    });
+    await gateway.listen();
   } catch (err) {
     const errCode =
       err && typeof err === "object" && "code" in err ? err.code : undefined;
@@ -38,7 +35,7 @@ async function main() {
       if (shouldOpenBrowser) {
         openBrowser(appUrl);
       }
-      await closeResources();
+      await gateway.shutdown();
       process.exit(0);
     }
     throw err;
