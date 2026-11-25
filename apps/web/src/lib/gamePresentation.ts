@@ -145,3 +145,19 @@ export function formatUnixDate(sec: number): string {
     day: "numeric",
   });
 }
+
+export function countActiveAdvancedFilters(filter: {
+  status: string;
+  type: string;
+  installed: string;
+  finished: string;
+  tags: readonly number[];
+}): number {
+  return (
+    (filter.status ? 1 : 0) +
+    (filter.type ? 1 : 0) +
+    (filter.installed !== "all" ? 1 : 0) +
+    (filter.finished !== "all" ? 1 : 0) +
+    filter.tags.length
+  );
+}
