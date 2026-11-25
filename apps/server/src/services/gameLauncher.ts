@@ -54,6 +54,164 @@ function readMagicHeader(filePath: string): Buffer {
   }
 }
 
+const SKIP_SCAN_DIRS = new Set([
+  "lib",
+  "renpy",
+  "www",
+  "monobleedingedge",
+  "__macosx",
+  "locales",
+  "node_modules",
+  "resources",
+]);
+
+const HELPER_EXE_PATTERNS = [
+  /^unins\d*\.exe$/i,
+  /crashhandler/i,
+  /^notification_helper\.exe$/i,
+  /^pythonw?\.exe$/i,
+  /^zsync(?:make)?\.exe$/i,
+  /^dxsetup\.exe$/i,
+  /vc_redist/i,
+  /^nwjc\.exe$/i,
+  /^payload\.exe$/i,
+  /^elevate\.exe$/i,
+  /^createdump\.exe$/i,
+];
+
+function isHelperBinary(fileName: string): boolean {
+  return HELPER_EXE_PATTERNS.some((pattern) => pattern.test(fileName));
+}
+
+function scoreNameMatch(folderName: string, candidateName: string): number {
+  const cleanFolder = folderName.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const stem = path
+    .basename(candidateName, path.extname(candidateName))
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  if (!cleanFolder || !stem) return 0;
+  if (cleanFolder === stem) return 3;
+  if (cleanFolder.includes(stem) || stem.includes(cleanFolder)) return 2;
+  if (stem === "game" || stem === "start" || stem === "play" || stem === "launch") {
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Finds the most likely playable binary/entry file inside an extracted game folder.
+ */
+export function findBestExecutableInFolder(
+  folderPath: string,
+  platform: NodeJS.Platform = process.platform
+): string | null {
+  const rootName = path.basename(folderPath);
+  const candidates: Array<{
+    filePath: string;
+    priority: number;
+    depth: number;
+    nameScore: number;
+    size: number;
+  }> = [];
+
+  const queue: Array<{ dir: string; depth: number }> = [
+    { dir: folderPath, depth: 0 },
+  ];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current.dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name.startsWith("~")) continue;
+      const fullPath = path.join(current.dir, entry.name);
+      const lower = entry.name.toLowerCase();
+
+      if (entry.isDirectory()) {
+        if (platform === "darwin" && lower.endsWith(".app")) {
+          candidates.push({
+            filePath: fullPath,
+            priority: 4,
+            depth: current.depth,
+            nameScore: scoreNameMatch(rootName, entry.name),
+            size: 0,
+          });
+          continue;
+        }
+        if (
+          current.depth < 3 &&
+          !SKIP_SCAN_DIRS.has(lower) &&
+          !lower.endsWith("_data")
+        ) {
+          queue.push({ dir: fullPath, depth: current.depth + 1 });
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || isHelperBinary(entry.name)) {
+        continue;
+      }
+
+      const ext = path.extname(lower);
+      let priority = 0;
+
+      if (platform === "win32") {
+        if (ext === ".exe") priority = 4;
+        else if (ext === ".bat" || ext === ".cmd") priority = 2;
+        else if (lower === "index.html") priority = 1;
+      } else if (platform === "darwin") {
+        if (ext === ".sh") priority = 3;
+        else if (lower === "index.html") priority = 1;
+      } else {
+        if (ext === ".sh" || ext === ".x86_64" || ext === ".appimage") {
+          priority = 3;
+        } else if (lower === "index.html") {
+          priority = 1;
+        } else if (ext === "") {
+          try {
+            if ((fs.statSync(fullPath).mode & 0o111) !== 0) priority = 3;
+          } catch {
+            // Ignore un-statable entry
+          }
+        }
+      }
+
+      if (priority > 0) {
+        let size = 0;
+        try {
+          size = fs.statSync(fullPath).size;
+        } catch {
+          // Ignore size errors
+        }
+        candidates.push({
+          filePath: fullPath,
+          priority,
+          depth: current.depth,
+          nameScore: scoreNameMatch(rootName, entry.name),
+          size,
+        });
+      }
+    }
+  }
+
+  candidates.sort(
+    (a, b) =>
+      b.priority - a.priority ||
+      a.depth - b.depth ||
+      b.nameScore - a.nameScore ||
+      b.size - a.size
+  );
+
+  return candidates[0]?.filePath ?? null;
+}
+
 export class LocalGameLauncher implements GameLauncher {
   async launch(
     executable: string
@@ -73,7 +231,7 @@ export class LocalGameLauncher implements GameLauncher {
       return { ok: true, target: trimmed };
     }
 
-    const resolved = path.resolve(trimmed);
+    let resolved = path.resolve(trimmed);
     if (!fs.existsSync(resolved)) {
       return {
         ok: false,
@@ -83,7 +241,7 @@ export class LocalGameLauncher implements GameLauncher {
       };
     }
 
-    const stat = fs.statSync(resolved);
+    let stat = fs.statSync(resolved);
 
     if (
       process.platform === "darwin" &&
@@ -95,8 +253,21 @@ export class LocalGameLauncher implements GameLauncher {
     }
 
     if (stat.isDirectory()) {
-      spawnDetached(osOpenCommand(), [resolved], { cwd: resolved });
-      return { ok: true, target: resolved };
+      const innerExe = findBestExecutableInFolder(resolved);
+      if (!innerExe) {
+        spawnDetached(osOpenCommand(), [resolved], { cwd: resolved });
+        return { ok: true, target: resolved };
+      }
+      resolved = innerExe;
+      stat = fs.statSync(resolved);
+      if (
+        process.platform === "darwin" &&
+        resolved.toLowerCase().endsWith(".app") &&
+        stat.isDirectory()
+      ) {
+        spawnDetached("open", [resolved]);
+        return { ok: true, target: resolved };
+      }
     }
 
     const ext = path.extname(resolved).toLowerCase();
