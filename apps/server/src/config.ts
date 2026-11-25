@@ -9,6 +9,7 @@ export interface ServerConfig {
   host: "127.0.0.1";
   port: number;
   dataDir: string;
+  gamesDir: string;
   dbPath: string;
   coversDir: string;
   masterKeyPath: string;
@@ -63,6 +64,23 @@ export function resolveDefaultSeaDataDir(
   return path.join(path.dirname(execPath), "data");
 }
 
+/**
+ * Resolves the default directory watched for extracted game folders (`standalone/games`).
+ */
+export function resolveDefaultSeaGamesDir(
+  platform: NodeJS.Platform = process.platform,
+  execPath: string = process.execPath,
+  homeDir: string = os.homedir()
+): string {
+  if (platform === "darwin") {
+    return path.join(
+      resolveDefaultSeaDataDir(platform, execPath, homeDir),
+      "games"
+    );
+  }
+  return path.join(path.dirname(execPath), "games");
+}
+
 export function resolveConfig(overrides?: Partial<ServerConfig>): ServerConfig {
   const seaRuntime = extractSeaRuntime();
   const rootDir = resolveDefaultRoot();
@@ -78,6 +96,16 @@ export function resolveConfig(overrides?: Partial<ServerConfig>): ServerConfig {
       : seaRuntime
         ? resolveDefaultSeaDataDir()
         : path.join(rootDir, "data");
+
+  const gamesDir = overrides?.gamesDir
+    ? path.resolve(overrides.gamesDir)
+    : process.env.GAMES_DIR
+      ? path.resolve(process.env.GAMES_DIR)
+      : seaRuntime
+        ? resolveDefaultSeaGamesDir()
+        : isLegacyBundle
+          ? path.join(rootDir, "games")
+          : path.join(rootDir, "release", "standalone", "games");
 
   const webDistDir = overrides?.webDistDir
     ? path.resolve(overrides.webDistDir)
@@ -115,6 +143,7 @@ export function resolveConfig(overrides?: Partial<ServerConfig>): ServerConfig {
     host: "127.0.0.1",
     port,
     dataDir,
+    gamesDir,
     dbPath: overrides?.dbPath ?? path.join(dataDir, "library.db"),
     coversDir: overrides?.coversDir ?? path.join(dataDir, "covers"),
     masterKeyPath: overrides?.masterKeyPath ?? path.join(dataDir, ".master.key"),
