@@ -14,15 +14,35 @@ import type { AppDatabase } from "../db/index.js";
 import * as schema from "../db/schema.js";
 
 export type GameSortKey = "lastUpdated" | "addedAt" | "name" | "score" | "rating";
+export type InstalledFilter =
+  | "all"
+  | "installed"
+  | "up_to_date"
+  | "outdated"
+  | "not_installed";
+export type FinishedFilter = "all" | "finished" | "unfinished";
 
 export interface GamesFilterQuery {
   search?: string;
   status?: number;
   type?: number;
+  tags?: number[];
+  installed?: InstalledFilter;
+  finished?: FinishedFilter;
   updatesOnly?: boolean;
   archived?: boolean;
   sort?: GameSortKey;
   dir?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export interface PaginatedGamesResult {
+  games: GameSummary[];
+  total: number;
+  updatesCount: number;
+  hasMore: boolean;
+  nextOffset: number | null;
 }
 
 export const GAME_SORT_COMPARATORS: Record<
@@ -37,10 +57,10 @@ export const GAME_SORT_COMPARATORS: Record<
     a.lastUpdatedTsSec - b.lastUpdatedTsSec || a.addedAtMs - b.addedAtMs,
 };
 
-export function listGames(
+export function listGamesPage(
   db: AppDatabase,
   filter: GamesFilterQuery = {}
-): GameSummary[] {
+): PaginatedGamesResult {
   const rows = db
     .select({
       game: schema.games,
@@ -91,6 +111,34 @@ export function listGames(
   if (filter.type !== undefined) {
     items = items.filter((g) => g.type === filter.type);
   }
+  if (filter.tags && filter.tags.length > 0) {
+    const requiredTags = filter.tags;
+    items = items.filter((g) => requiredTags.every((tagId) => g.tags.includes(tagId)));
+  }
+  if (filter.installed && filter.installed !== "all") {
+    items = items.filter((g) => {
+      switch (filter.installed) {
+        case "installed":
+          return Boolean(g.installedVersion) || g.executables.length > 0;
+        case "up_to_date":
+          return Boolean(g.installedVersion) && g.installedVersion === g.version;
+        case "outdated":
+          return Boolean(g.installedVersion) && g.installedVersion !== g.version;
+        case "not_installed":
+          return !g.installedVersion && g.executables.length === 0;
+        default:
+          return true;
+      }
+    });
+  }
+  if (filter.finished && filter.finished !== "all") {
+    items = items.filter((g) => {
+      const targetVersion = g.installedVersion || g.version;
+      const isFinished =
+        Boolean(g.finishedVersion) && g.finishedVersion === targetVersion;
+      return filter.finished === "finished" ? isFinished : !isFinished;
+    });
+  }
   if (filter.search) {
     const q = filter.search.toLowerCase();
     items = items.filter(
@@ -106,7 +154,36 @@ export function listGames(
   const comparator = GAME_SORT_COMPARATORS[sortKey];
   items.sort((a, b) => comparator(a, b) * dirMul);
 
-  return items;
+  const total = items.length;
+  const updatesCount = items.reduce((acc, g) => acc + (g.hasUpdate ? 1 : 0), 0);
+
+  if (filter.limit !== undefined) {
+    const offset = Math.max(0, filter.offset ?? 0);
+    const games = items.slice(offset, offset + filter.limit);
+    const hasMore = offset + games.length < total;
+    return {
+      games,
+      total,
+      updatesCount,
+      hasMore,
+      nextOffset: hasMore ? offset + games.length : null,
+    };
+  }
+
+  return {
+    games: items,
+    total,
+    updatesCount,
+    hasMore: false,
+    nextOffset: null,
+  };
+}
+
+export function listGames(
+  db: AppDatabase,
+  filter: GamesFilterQuery = {}
+): GameSummary[] {
+  return listGamesPage(db, filter).games;
 }
 
 export function getGameDetail(
