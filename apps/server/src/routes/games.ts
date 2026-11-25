@@ -14,6 +14,19 @@ const GamesQuerySchema = z.object({
   search: z.string().optional(),
   status: z.coerce.number().int().optional(),
   type: z.coerce.number().int().optional(),
+  tags: z
+    .string()
+    .transform((val) =>
+      val
+        .split(",")
+        .map((part) => Number.parseInt(part.trim(), 10))
+        .filter((n) => Number.isInteger(n) && n > 0)
+    )
+    .optional(),
+  installed: z
+    .enum(["all", "installed", "up_to_date", "outdated", "not_installed"])
+    .optional(),
+  finished: z.enum(["all", "finished", "unfinished"]).optional(),
   updatesOnly: z
     .enum(["true", "false"])
     .transform((v) => v === "true")
@@ -26,6 +39,8 @@ const GamesQuerySchema = z.object({
     .enum(["lastUpdated", "addedAt", "name", "score", "rating"])
     .optional(),
   dir: z.enum(["asc", "desc"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 });
 
 const GameIdParamSchema = z.object({
@@ -62,7 +77,7 @@ export function registerGameRoutes(
           parsed.error
         );
       }
-      return { games: deps.gamesService.list(parsed.data) };
+      return deps.gamesService.listPage(parsed.data);
     }
   );
 
