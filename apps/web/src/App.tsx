@@ -18,14 +18,17 @@ export function App() {
 
   const {
     games,
+    totalCount,
+    updatesCount,
+    hasMore,
     loading,
+    loadingMore,
     error,
     filter,
     viewMode,
     refreshing,
     launchingGameId,
     chooseExeGame,
-    updatesCount,
     updateFilter,
     changeViewMode,
     selectGame,
@@ -33,6 +36,7 @@ export function App() {
     toggleFinished,
     playGame,
     closeChooseExe,
+    loadMore,
     refreshAll,
     dismissError,
   } = useGameLibrary();
@@ -52,7 +56,7 @@ export function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <HeaderBar
-        totalGames={games.length}
+        totalGames={totalCount}
         updatesCount={updatesCount}
         sseConnected={sseConnected}
         accountStatus={accountStatus}
@@ -99,12 +103,16 @@ export function App() {
       ) : (
         <GameGrid
           games={games}
+          totalCount={totalCount}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
           viewMode={viewMode}
           launchingGameId={launchingGameId}
           onSelectGame={(id) => selectGame(id)}
           onPlayGame={playGame}
           onToggleInstalled={toggleInstalled}
           onToggleFinished={toggleFinished}
+          onLoadMore={loadMore}
         />
       )}
 
