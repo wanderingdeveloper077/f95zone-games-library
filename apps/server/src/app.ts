@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
+import type { ExtensionBootstrapResponse } from "@game-library/shared";
+import { inArray } from "drizzle-orm";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
   PairingManager,
@@ -12,6 +14,7 @@ import {
 import type { ServerConfig } from "./config.js";
 import { createAesGcmCipher, loadOrCreateMasterKey } from "./db/crypto.js";
 import { initializeDatabase, openDatabase } from "./db/index.js";
+import * as schema from "./db/schema.js";
 import { registerAccountRoutes } from "./routes/accounts.js";
 import { registerCoverRoutes } from "./routes/covers.js";
 import { registerGameRoutes } from "./routes/games.js";
@@ -20,6 +23,7 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { AccountsService } from "./services/accountsService.js";
 import { LocalCoverStorage } from "./services/coverStorage.js";
 import { LocalGameLauncher } from "./services/gameLauncher.js";
+import { GamesDirectoryWatcher } from "./services/gamesDirectoryWatcher.js";
 import { GamesService } from "./services/gamesService.js";
 import { OsNativeFilePicker } from "./services/nativeFilePicker.js";
 import { SettingsService } from "./services/settingsService.js";
@@ -31,15 +35,18 @@ export interface BuiltApp {
   sseHub: SseHub;
   worker: IndexerWorkerManager;
   pairing: PairingManager;
+  hasActiveJobs: () => boolean;
+  getExtensionBootstrapSnapshot: () => ExtensionBootstrapResponse;
   closeResources: () => Promise<void>;
 }
 
 export async function buildApp(
   config: ServerConfig,
-  options?: { startWorker?: boolean }
+  options?: { startWorker?: boolean; startWatcher?: boolean }
 ): Promise<BuiltApp> {
   fs.mkdirSync(config.dataDir, { recursive: true });
   fs.mkdirSync(config.coversDir, { recursive: true });
+  fs.mkdirSync(config.gamesDir, { recursive: true });
 
   const conn = openDatabase(config.dbPath, config.nativeBindingPath);
   initializeDatabase(conn, config.migrationsDir);
@@ -50,6 +57,17 @@ export async function buildApp(
   const pairing = new PairingManager(config.pairingTokenPath);
   const sseHub = new SseHub();
   const worker = new IndexerWorkerManager(config, sseHub);
+  const gamesWatcher = new GamesDirectoryWatcher({
+    db: conn.db,
+    broadcaster: sseHub,
+    gamesDir: config.gamesDir,
+  });
+
+  const unsubWatcherBroadcast = sseHub.onBroadcast((event) => {
+    if (event.type === "games_added" || event.type === "job_completed") {
+      gamesWatcher.scheduleScan(100);
+    }
+  });
 
   const settingsService = new SettingsService({ db: conn.db });
   const accountsService = new AccountsService({
@@ -69,6 +87,9 @@ export async function buildApp(
 
   if (options?.startWorker !== false) {
     worker.start();
+  }
+  if (options?.startWatcher !== false) {
+    gamesWatcher.start();
   }
 
   const app = Fastify({ logger: false });
@@ -169,12 +190,35 @@ export async function buildApp(
     });
   });
 
+  const hasActiveJobs = (): boolean => {
+    const active = conn.db
+      .select({ id: schema.indexJobs.id })
+      .from(schema.indexJobs)
+      .where(inArray(schema.indexJobs.status, ["queued", "running"]))
+      .limit(1)
+      .get();
+    return active !== undefined;
+  };
+
+  const getExtensionBootstrapSnapshot = (): ExtensionBootstrapResponse =>
+    settingsService.getExtensionBootstrap();
+
   const closeResources = async () => {
+    unsubWatcherBroadcast();
+    gamesWatcher.stop();
     sseHub.closeAll();
     await worker.shutdown();
     await app.close();
     conn.sqlite.close();
   };
 
-  return { app, sseHub, worker, pairing, closeResources };
+  return {
+    app,
+    sseHub,
+    worker,
+    pairing,
+    hasActiveJobs,
+    getExtensionBootstrapSnapshot,
+    closeResources,
+  };
 }
