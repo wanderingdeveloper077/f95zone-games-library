@@ -13,11 +13,27 @@ interface SseClient {
  */
 export class SseHub implements EventBroadcaster, SseClientRegistry {
   private readonly clients = new Set<SseClient>();
+  private readonly countListeners = new Set<(count: number) => void>();
+  private readonly broadcastListeners = new Set<(event: SseEvent) => void>();
   private nextClientId = 1;
   private nextEventId = 1;
 
   get clientCount(): number {
     return this.clients.size;
+  }
+
+  onClientCountChange(listener: (count: number) => void): () => void {
+    this.countListeners.add(listener);
+    return () => {
+      this.countListeners.delete(listener);
+    };
+  }
+
+  onBroadcast(listener: (event: SseEvent) => void): () => void {
+    this.broadcastListeners.add(listener);
+    return () => {
+      this.broadcastListeners.delete(listener);
+    };
   }
 
   addClient(res: ServerResponse, originHeader?: string): void {
@@ -43,10 +59,13 @@ export class SseHub implements EventBroadcaster, SseClientRegistry {
 
     const client: SseClient = { id: clientId, res, heartbeat };
     this.clients.add(client);
+    this.notifyClientCountChange();
 
     const cleanup = () => {
       clearInterval(heartbeat);
-      this.clients.delete(client);
+      if (this.clients.delete(client)) {
+        this.notifyClientCountChange();
+      }
     };
 
     res.on("close", cleanup);
@@ -62,9 +81,13 @@ export class SseHub implements EventBroadcaster, SseClientRegistry {
     for (const client of this.clients) {
       this.writeToClient(client, event);
     }
+    for (const listener of this.broadcastListeners) {
+      listener(event);
+    }
   }
 
   closeAll(): void {
+    const hadClients = this.clients.size > 0;
     for (const client of this.clients) {
       clearInterval(client.heartbeat);
       if (!client.res.writableEnded) {
@@ -72,6 +95,16 @@ export class SseHub implements EventBroadcaster, SseClientRegistry {
       }
     }
     this.clients.clear();
+    if (hadClients) {
+      this.notifyClientCountChange();
+    }
+  }
+
+  private notifyClientCountChange(): void {
+    const count = this.clients.size;
+    for (const listener of this.countListeners) {
+      listener(count);
+    }
   }
 
   private writeToClient(client: SseClient, event: SseEvent): void {
