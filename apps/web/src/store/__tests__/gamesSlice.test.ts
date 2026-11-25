@@ -9,9 +9,11 @@ import {
   createGamesThunk,
   deleteGameThunk,
   fetchGamesThunk,
+  fetchMoreGamesThunk,
   initialGamesFilter,
   launchGameThunk,
   setSelectedGameId,
+  setViewMode,
   updateGameThunk,
 } from "../slices/gamesSlice";
 
@@ -117,12 +119,20 @@ describe("Axios error normalization & Redux Toolkit gamesSlice", () => {
   it("handles fetchGamesThunk pending, fulfilled, and rejected states", async () => {
     const store = createAppStore();
 
-    vi.mocked(gamesService.getGames).mockResolvedValueOnce([SAMPLE_GAME]);
+    vi.mocked(gamesService.getGames).mockResolvedValueOnce({
+      games: [SAMPLE_GAME],
+      total: 1,
+      updatesCount: 0,
+      hasMore: false,
+      nextOffset: null,
+    });
     const pendingPromise = store.dispatch(fetchGamesThunk(initialGamesFilter));
     expect(store.getState().games.loading).toBe(true);
     await pendingPromise;
     expect(store.getState().games.loading).toBe(false);
     expect(store.getState().games.items).toEqual([SAMPLE_GAME]);
+    expect(store.getState().games.totalCount).toBe(1);
+    expect(store.getState().games.hasMore).toBe(false);
     expect(store.getState().games.error).toBeNull();
 
     vi.mocked(gamesService.getGames).mockRejectedValueOnce(
@@ -174,7 +184,13 @@ describe("Axios error normalization & Redux Toolkit gamesSlice", () => {
 
   it("updates executables and tracks launchGameThunk state transitions", async () => {
     const store = createAppStore();
-    vi.mocked(gamesService.getGames).mockResolvedValueOnce([SAMPLE_GAME]);
+    vi.mocked(gamesService.getGames).mockResolvedValueOnce({
+      games: [SAMPLE_GAME],
+      total: 1,
+      updatesCount: 0,
+      hasMore: false,
+      nextOffset: null,
+    });
     await store.dispatch(fetchGamesThunk(initialGamesFilter));
     store.dispatch(setSelectedGameId(1001));
 
@@ -221,5 +237,51 @@ describe("Axios error normalization & Redux Toolkit gamesSlice", () => {
     await store.dispatch(launchGameThunk({ id: 1001 }));
     expect(store.getState().games.launchingGameId).toBeNull();
     expect(store.getState().games.launchError).toBe("Executable missing");
+  });
+
+  it("supports switching viewMode between grid, small-grid, and list", () => {
+    const store = createAppStore();
+    expect(store.getState().games.viewMode).toBe("grid");
+
+    store.dispatch(setViewMode("small-grid"));
+    expect(store.getState().games.viewMode).toBe("small-grid");
+
+    store.dispatch(setViewMode("list"));
+    expect(store.getState().games.viewMode).toBe("list");
+  });
+
+  it("loads next pages with fetchMoreGamesThunk and deduplicates items", async () => {
+    const store = createAppStore();
+    const secondGame: GameSummary = {
+      ...SAMPLE_GAME,
+      id: 1002,
+      name: "Second Game",
+      hasUpdate: true,
+    };
+
+    vi.mocked(gamesService.getGames).mockResolvedValueOnce({
+      games: [SAMPLE_GAME],
+      total: 2,
+      updatesCount: 1,
+      hasMore: true,
+      nextOffset: 1,
+    });
+    await store.dispatch(fetchGamesThunk(initialGamesFilter));
+    expect(store.getState().games.hasMore).toBe(true);
+    expect(store.getState().games.nextOffset).toBe(1);
+
+    vi.mocked(gamesService.getGames).mockResolvedValueOnce({
+      games: [SAMPLE_GAME, secondGame],
+      total: 2,
+      updatesCount: 1,
+      hasMore: false,
+      nextOffset: null,
+    });
+    await store.dispatch(fetchMoreGamesThunk());
+    expect(store.getState().games.items.map((g) => g.id)).toEqual([1001, 1002]);
+    expect(store.getState().games.hasMore).toBe(false);
+    expect(store.getState().games.nextOffset).toBeNull();
+    expect(store.getState().games.totalCount).toBe(2);
+    expect(store.getState().games.updatesCount).toBe(1);
   });
 });
