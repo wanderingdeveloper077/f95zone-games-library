@@ -21,9 +21,11 @@ import type {
 import type { AppDatabase } from "../db/index.js";
 import {
   type GamesFilterQuery,
+  type PaginatedGamesResult,
   createJobRecord,
   getGameDetail,
   listGames,
+  listGamesPage,
 } from "../db/queries.js";
 import * as schema from "../db/schema.js";
 import { LocalGameLauncher } from "./gameLauncher.js";
@@ -143,6 +145,10 @@ export class GamesService {
 
   list(filter?: GamesFilterQuery): GameSummary[] {
     return listGames(this.db, filter);
+  }
+
+  listPage(filter?: GamesFilterQuery): PaginatedGamesResult {
+    return listGamesPage(this.db, filter);
   }
 
   getDetail(id: number): GameDetail | null {
@@ -289,7 +295,32 @@ export class GamesService {
       .get();
     if (!existing) return null;
 
-    const computedHasUpdate = computePatchedHasUpdate(existing.version, patch);
+    const normalizedExecutables =
+      patch.executables !== undefined
+        ? Array.from(
+            new Set(patch.executables.map((e) => e.trim()).filter(Boolean))
+          )
+        : undefined;
+
+    const autoInstalledVersion =
+      normalizedExecutables &&
+      normalizedExecutables.length > 0 &&
+      patch.installedVersion === undefined &&
+      !existing.installedVersion
+        ? (patch.version ?? existing.version) || "Installed"
+        : undefined;
+
+    const nextInstalledVersionPatch =
+      patch.installedVersion !== undefined
+        ? patch.installedVersion
+        : autoInstalledVersion;
+
+    const computedHasUpdate = computePatchedHasUpdate(existing.version, {
+      ...patch,
+      ...(nextInstalledVersionPatch !== undefined
+        ? { installedVersion: nextInstalledVersionPatch }
+        : {}),
+    });
 
     this.db
       .update(schema.games)
@@ -302,8 +333,8 @@ export class GamesService {
         ...(patch.type !== undefined ? { type: patch.type } : {}),
         ...(patch.status !== undefined ? { status: patch.status } : {}),
         ...(patch.url !== undefined ? { url: patch.url } : {}),
-        ...(patch.installedVersion !== undefined
-          ? { installedVersion: patch.installedVersion }
+        ...(nextInstalledVersionPatch !== undefined
+          ? { installedVersion: nextInstalledVersionPatch }
           : {}),
         ...(patch.finishedVersion !== undefined
           ? { finishedVersion: patch.finishedVersion }
@@ -314,12 +345,8 @@ export class GamesService {
         ...(patch.archived !== undefined ? { archived: patch.archived } : {}),
         ...(patch.rating !== undefined ? { rating: patch.rating } : {}),
         ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
-        ...(patch.executables !== undefined
-          ? {
-              executablesJson: Array.from(
-                new Set(patch.executables.map((e) => e.trim()).filter(Boolean))
-              ),
-            }
+        ...(normalizedExecutables !== undefined
+          ? { executablesJson: normalizedExecutables }
           : {}),
       })
       .where(eq(schema.games.id, id))
