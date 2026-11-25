@@ -9,7 +9,9 @@ import { type PayloadAction, createAsyncThunk, createSlice } from "@reduxjs/tool
 import { type NormalizedApiError, toNormalizedApiError } from "../../services/api";
 import {
   type CreateGamesResult,
+  DEFAULT_GAMES_PAGE_SIZE,
   type GamesFilterState,
+  type PaginatedGamesResponse,
   createGames,
   deleteGame,
   getGameDetail,
@@ -21,9 +23,41 @@ import {
   updateGame,
 } from "../../services/gamesService";
 
+export type LibraryViewMode = "grid" | "small-grid" | "list";
+
+const VIEW_MODE_STORAGE_KEY = "glm_view_mode";
+
+export function loadInitialViewMode(): LibraryViewMode {
+  try {
+    if (typeof localStorage === "undefined") return "grid";
+    const stored = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    if (stored === "grid" || stored === "small-grid" || stored === "list") {
+      return stored;
+    }
+  } catch {
+    // Ignore storage read restrictions in sandboxed environments.
+  }
+  return "grid";
+}
+
+function persistViewMode(mode: LibraryViewMode): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+    }
+  } catch {
+    // Ignore storage write errors.
+  }
+}
+
 export interface GamesState {
   items: GameSummary[];
+  totalCount: number;
+  updatesCount: number;
+  hasMore: boolean;
+  nextOffset: number | null;
   loading: boolean;
+  loadingMore: boolean;
   error: string | null;
   mutating: boolean;
   creating: boolean;
@@ -32,7 +66,7 @@ export interface GamesState {
   launchingGameId: number | null;
   launchError: string | null;
   filter: GamesFilterState;
-  viewMode: "grid" | "list";
+  viewMode: LibraryViewMode;
   selectedGameId: number | null;
   selectedGame: GameDetail | null;
   detailLoading: boolean;
@@ -43,6 +77,9 @@ export const initialGamesFilter: GamesFilterState = {
   search: "",
   status: "",
   type: "",
+  tags: [],
+  installed: "all",
+  finished: "all",
   updatesOnly: false,
   showArchived: false,
   sort: "lastUpdated",
@@ -51,7 +88,12 @@ export const initialGamesFilter: GamesFilterState = {
 
 const initialState: GamesState = {
   items: [],
+  totalCount: 0,
+  updatesCount: 0,
+  hasMore: false,
+  nextOffset: null,
   loading: false,
+  loadingMore: false,
   error: null,
   mutating: false,
   creating: false,
@@ -60,7 +102,7 @@ const initialState: GamesState = {
   launchingGameId: null,
   launchError: null,
   filter: initialGamesFilter,
-  viewMode: "grid",
+  viewMode: loadInitialViewMode(),
   selectedGameId: null,
   selectedGame: null,
   detailLoading: false,
@@ -95,17 +137,52 @@ function toSummary(detail: GameDetail): GameSummary {
   };
 }
 
+export type FetchGamesArg =
+  | GamesFilterState
+  | { filter: GamesFilterState; preserveLoadedCount?: boolean };
+
 export const fetchGamesThunk = createAsyncThunk<
-  GameSummary[],
-  GamesFilterState,
-  { rejectValue: NormalizedApiError }
->("games/fetchGames", async (filter, { rejectWithValue }) => {
+  PaginatedGamesResponse,
+  FetchGamesArg,
+  { state: { games: GamesState }; rejectValue: NormalizedApiError }
+>("games/fetchGames", async (arg, { getState, rejectWithValue }) => {
   try {
-    return await getGames(filter);
+    const filter = "filter" in arg ? arg.filter : arg;
+    const preserveLoadedCount =
+      "filter" in arg ? Boolean(arg.preserveLoadedCount) : false;
+    const limit = preserveLoadedCount
+      ? Math.max(DEFAULT_GAMES_PAGE_SIZE, getState().games.items.length)
+      : DEFAULT_GAMES_PAGE_SIZE;
+    return await getGames(filter, { limit, offset: 0 });
   } catch (err) {
     return rejectWithValue(toNormalizedApiError(err));
   }
 });
+
+export const fetchMoreGamesThunk = createAsyncThunk<
+  PaginatedGamesResponse,
+  void,
+  { state: { games: GamesState }; rejectValue: NormalizedApiError }
+>(
+  "games/fetchMoreGames",
+  async (_arg, { getState, rejectWithValue }) => {
+    const { filter, nextOffset } = getState().games;
+    try {
+      return await getGames(filter, {
+        limit: DEFAULT_GAMES_PAGE_SIZE,
+        offset: nextOffset ?? 0,
+      });
+    } catch (err) {
+      return rejectWithValue(toNormalizedApiError(err));
+    }
+  },
+  {
+    condition: (_arg, { getState }) => {
+      const { hasMore, nextOffset, loading, loadingMore } = getState().games;
+      return hasMore && nextOffset !== null && !loading && !loadingMore;
+    },
+  }
+);
 
 export const fetchGameDetailThunk = createAsyncThunk<
   GameDetail,
@@ -211,8 +288,9 @@ const gamesSlice = createSlice({
     setFilter(state, action: PayloadAction<GamesFilterState>) {
       state.filter = action.payload;
     },
-    setViewMode(state, action: PayloadAction<"grid" | "list">) {
+    setViewMode(state, action: PayloadAction<LibraryViewMode>) {
       state.viewMode = action.payload;
+      persistViewMode(action.payload);
     },
     setSelectedGameId(state, action: PayloadAction<number | null>) {
       state.selectedGameId = action.payload;
@@ -240,7 +318,12 @@ const gamesSlice = createSlice({
       })
       .addCase(fetchGamesThunk.fulfilled, (state, action) => {
         state.loading = false;
-        state.items = action.payload;
+        state.loadingMore = false;
+        state.items = action.payload.games;
+        state.totalCount = action.payload.total;
+        state.updatesCount = action.payload.updatesCount;
+        state.hasMore = action.payload.hasMore;
+        state.nextOffset = action.payload.nextOffset;
       })
       .addCase(fetchGamesThunk.rejected, (state, action) => {
         state.loading = false;
@@ -248,6 +331,30 @@ const gamesSlice = createSlice({
           action.payload?.message ??
           action.error.message ??
           "Failed to load games.";
+      })
+
+      .addCase(fetchMoreGamesThunk.pending, (state) => {
+        state.loadingMore = true;
+        state.error = null;
+      })
+      .addCase(fetchMoreGamesThunk.fulfilled, (state, action) => {
+        state.loadingMore = false;
+        const existingIds = new Set(state.items.map((g) => g.id));
+        const fresh = action.payload.games.filter((g) => !existingIds.has(g.id));
+        if (fresh.length > 0) {
+          state.items.push(...fresh);
+        }
+        state.totalCount = action.payload.total;
+        state.updatesCount = action.payload.updatesCount;
+        state.hasMore = action.payload.hasMore;
+        state.nextOffset = action.payload.nextOffset;
+      })
+      .addCase(fetchMoreGamesThunk.rejected, (state, action) => {
+        state.loadingMore = false;
+        state.error =
+          action.payload?.message ??
+          action.error.message ??
+          "Failed to load more games.";
       })
 
       .addCase(fetchGameDetailThunk.pending, (state) => {
@@ -278,6 +385,11 @@ const gamesSlice = createSlice({
         const fresh = action.payload.added.filter((g) => !existingIds.has(g.id));
         if (fresh.length > 0) {
           state.items = [...fresh, ...state.items];
+          state.totalCount += fresh.length;
+          state.updatesCount += fresh.filter((g) => g.hasUpdate).length;
+          if (state.nextOffset !== null) {
+            state.nextOffset += fresh.length;
+          }
         }
       })
       .addCase(createGamesThunk.rejected, (state, action) => {
@@ -304,10 +416,24 @@ const gamesSlice = createSlice({
         const summary = toSummary(updated);
         const idx = state.items.findIndex((g) => g.id === updated.id);
         if (idx !== -1) {
+          const prevHasUpdate = state.items[idx]?.hasUpdate ?? false;
           if (!state.filter.showArchived && updated.archived) {
             state.items.splice(idx, 1);
+            state.totalCount = Math.max(0, state.totalCount - 1);
+            if (prevHasUpdate) {
+              state.updatesCount = Math.max(0, state.updatesCount - 1);
+            }
+            if (state.nextOffset !== null && state.nextOffset > 0) {
+              state.nextOffset -= 1;
+            }
           } else {
             state.items[idx] = summary;
+            if (prevHasUpdate !== summary.hasUpdate) {
+              state.updatesCount = Math.max(
+                0,
+                state.updatesCount + (summary.hasUpdate ? 1 : -1)
+              );
+            }
           }
         }
       })
@@ -325,7 +451,15 @@ const gamesSlice = createSlice({
       })
       .addCase(deleteGameThunk.fulfilled, (state, action) => {
         state.mutating = false;
+        const removed = state.items.find((g) => g.id === action.payload.id);
         state.items = state.items.filter((g) => g.id !== action.payload.id);
+        state.totalCount = Math.max(0, state.totalCount - 1);
+        if (removed?.hasUpdate) {
+          state.updatesCount = Math.max(0, state.updatesCount - 1);
+        }
+        if (removed && state.nextOffset !== null && state.nextOffset > 0) {
+          state.nextOffset -= 1;
+        }
         if (state.selectedGameId === action.payload.id) {
           state.selectedGameId = null;
           state.selectedGame = null;
