@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { eq, inArray } from "drizzle-orm";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as schema from "./schema.js";
@@ -68,6 +69,46 @@ export function initializeDatabase(
   migrate(conn.db, { migrationsFolder });
 
   const now = Date.now();
+  // Reconcile orphaned jobs from an abrupt process termination so they do not block idle sleep.
+  conn.db
+    .update(schema.indexJobs)
+    .set({
+      status: "failed",
+      errorSummary: "Interrupted by server restart",
+      finishedAtMs: now,
+    })
+    .where(inArray(schema.indexJobs.status, ["queued", "running"]))
+    .run();
+
+  // Ensure existing games with at least one registered executable/folder path are marked installed.
+  const existingGames = conn.db
+    .select({
+      id: schema.games.id,
+      version: schema.games.version,
+      installedVersion: schema.games.installedVersion,
+      executablesJson: schema.games.executablesJson,
+    })
+    .from(schema.games)
+    .all();
+
+  for (const row of existingGames) {
+    if (
+      !row.installedVersion &&
+      Array.isArray(row.executablesJson) &&
+      row.executablesJson.length > 0
+    ) {
+      const nextInstalled = row.version || "Installed";
+      conn.db
+        .update(schema.games)
+        .set({
+          installedVersion: nextInstalled,
+          hasUpdate: nextInstalled !== row.version,
+        })
+        .where(eq(schema.games.id, row.id))
+        .run();
+    }
+  }
+
   conn.db
     .insert(schema.appSettings)
     .values({
