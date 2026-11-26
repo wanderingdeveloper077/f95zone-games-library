@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  verify-and-plan:
+    name: Verify Checks & Plan Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]')
+    outputs:
+      should_release: ${{ steps.plan.outputs.should_release }}
+      next_version: ${{ steps.plan.outputs.next_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        run: pnpm build
+
+      - name: Typecheck workspace packages
+        run: pnpm typecheck
+
+      - name: Run test suite
+        run: pnpm test
+
+      - name: Calculate next semantic release version
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -f release/.next-version
+          pnpm exec semantic-release --dry-run
+          if [ -s release/.next-version ]; then
+            NEXT_VERSION="$(tr -d '\r\n' < release/.next-version)"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "next_version=${NEXT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "Planned release version: ${NEXT_VERSION}"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "No releasable commits since last tag."
+          fi
+
+  build-windows:
+    name: Build Windows x64 & Extensions
+    runs-on: windows-latest
+    needs: verify-and-plan
+    if: needs.verify-and-plan.outputs.should_release == 'true'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stamp release version
+        run: node scripts/sync-version.mjs "${{ needs.verify-and-plan.outputs.next_version }}"
+
+      - name: Build standalone Windows executable and extensions
+        run: node scripts/build-app.mjs --target=win
+
+      - name: Package Windows and browser extension ZIP archives
+        shell: pwsh
+        run: |
+          $ver = "${{ needs.verify-and-plan.outputs.next_version }}"
+          $artifactsDir = "release/artifacts"
+          $winStage = "release/stage/Game-Library-Manager-$ver-win-x64"
+
+          New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $winStage | Out-Null
+
+          Copy-Item -Path "release/standalone/*" -Destination $winStage -Recurse -Force
+
+          & 7z a -tzip "$artifactsDir/Game-Library-Manager-$ver-win-x64.zip" "./release/stage/Game-Library-Manager-$ver-win-x64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          & 7z a -tzip "$artifactsDir/Game-Library-Manager-Extension-$ver-chrome-mv3.zip" "./apps/extension/.output/chrome-mv3/*"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          & 7z a -tzip "$artifactsDir/Game-Library-Manager-Extension-$ver-firefox-mv2.zip" "./apps/extension/.output/firefox-mv2/*"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows and extension artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-windows
+          path: release/artifacts/*.zip
+          if-no-files-found: error
+
+  build-macos-arm64:
+    name: Build macOS Apple Silicon DMG
+    runs-on: macos-15
+    needs: verify-and-plan
+    if: needs.verify-and-plan.outputs.should_release == 'true'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js (arm64)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          architecture: "arm64"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stamp release version
+        run: node scripts/sync-version.mjs "${{ needs.verify-and-plan.outputs.next_version }}"
+
+      - name: Build Apple Silicon .app and .dmg
+        run: node scripts/build-app.mjs --target=mac --arch=arm64 --dmg
+
+      - name: Verify Mach-O, code signature, and DMG
+        env:
+          RELEASE_VERSION: ${{ needs.verify-and-plan.outputs.next_version }}
+        run: |
+          lipo -archs "release/standalone/Game Library Manager.app/Contents/MacOS/Game Library Manager"
+          lipo -archs "release/standalone/Game Library Manager.app/Contents/Frameworks/better_sqlite3.node"
+          codesign --verify --deep --strict "release/standalone/Game Library Manager.app"
+          DMG_SRC="release/standalone/Game Library Manager-${RELEASE_VERSION}-arm64.dmg"
+          hdiutil verify "${DMG_SRC}"
+          mkdir -p release/artifacts
+          cp "${DMG_SRC}" "release/artifacts/Game-Library-Manager-${RELEASE_VERSION}-macos-arm64.dmg"
+
+      - name: Upload macOS arm64 DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-macos-arm64
+          path: release/artifacts/*.dmg
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [verify-and-plan, build-windows, build-macos-arm64]
+    if: needs.verify-and-plan.outputs.should_release == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download Windows & extension artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-windows
+          path: release/artifacts
+
+      - name: Download macOS arm64 DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-macos-arm64
+          path: release/artifacts
+
+      - name: Verify staged release artifacts
+        run: ls -lh release/artifacts/
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec semantic-release
