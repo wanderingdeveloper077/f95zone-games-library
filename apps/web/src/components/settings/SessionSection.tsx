@@ -28,13 +28,13 @@ export function SessionSection({
     <Card className="bg-card/40">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-xs">
-          <ShieldCheck className="h-4 w-4 text-emerald-400" />
+          <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           F95zone Encrypted Session
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-3 pt-1">
-        <div className="space-y-1.5 text-neutral-300">
+        <div className="space-y-1.5 text-foreground">
           <div className="flex items-center gap-2">
             <span>Status:</span>
             <Badge
