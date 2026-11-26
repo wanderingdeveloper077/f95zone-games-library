@@ -111,7 +111,7 @@ export function GameDetailTabs({
                       asChild
                       variant="secondary"
                       size="xs"
-                      className="border border-border text-rose-300"
+                      className="border border-border text-primary"
                     >
                       <a href={m.url} target="_blank" rel="noreferrer">
                         {m.label || "Mirror"}
@@ -143,11 +143,11 @@ export function GameDetailTabs({
                   <span className="font-semibold text-foreground">
                     {rev.user}
                   </span>
-                  <span className="text-amber-300">
+                  <span className="text-amber-600 dark:text-amber-300">
                     {rev.score.toFixed(1)} / 5
                   </span>
                 </div>
-                <p className="mt-1 text-neutral-300">{rev.message}</p>
+                <p className="mt-1 text-foreground/90">{rev.message}</p>
               </div>
             ))
           )}
