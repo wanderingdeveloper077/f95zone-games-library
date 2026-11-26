@@ -16,6 +16,7 @@ export interface GameGridProps {
   hasMore: boolean;
   loadingMore: boolean;
   viewMode: LibraryViewMode;
+  sfwMode?: boolean;
   launchingGameId?: number | null;
   onSelectGame: (id: number) => void;
   onPlayGame: (game: GameSummary) => void;
@@ -31,6 +32,7 @@ export function GameGrid({
   hasMore,
   loadingMore,
   viewMode,
+  sfwMode = false,
   launchingGameId,
   onSelectGame,
   onPlayGame,
@@ -80,6 +82,7 @@ export function GameGrid({
             <GameSmallCard
               key={game.id}
               game={game}
+              sfwMode={sfwMode}
               launching={launchingGameId === game.id}
               onSelect={onSelectGame}
               onPlay={onPlayGame}
@@ -94,6 +97,7 @@ export function GameGrid({
             <GameCard
               key={game.id}
               game={game}
+              sfwMode={sfwMode}
               launching={launchingGameId === game.id}
               onSelect={onSelectGame}
               onPlay={onPlayGame}
