@@ -49,6 +49,7 @@ export class SettingsService {
           ? { downloadGalleryImages: patch.downloadGalleryImages }
           : {}),
         ...(patch.sfwMode !== undefined ? { sfwMode: patch.sfwMode } : {}),
+        ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
         ...(patch.extIconGlow !== undefined
           ? { extIconGlow: patch.extIconGlow }
           : {}),
