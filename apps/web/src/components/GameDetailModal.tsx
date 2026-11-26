@@ -35,7 +35,10 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { useGameDetail } from "@/hooks/useGameDetail";
-import { getSfwImageBlurClass } from "@/lib/gamePresentation";
+import {
+  getSfwImageBlurClass,
+  getStatusTextColor,
+} from "@/lib/gamePresentation";
 import { cn } from "@/lib/utils";
 
 interface GameDetailModalProps {
@@ -180,9 +183,7 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
                         variant="secondary"
                         className="rounded px-2 py-0.5 font-medium"
                         style={{
-                          color:
-                            STATUS_META[game.status as StatusId]?.color ??
-                            "#eee",
+                          color: getStatusTextColor(game.status),
                         }}
                       >
                         {STATUS_META[game.status as StatusId]?.label ??
@@ -190,7 +191,7 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
                       </Badge>
                       <Badge
                         variant="secondary"
-                        className="rounded px-2 py-0.5 font-mono text-neutral-200"
+                        className="rounded px-2 py-0.5 font-mono"
                       >
                         {game.version}
                       </Badge>
@@ -199,7 +200,7 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
                           href={game.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-rose-400 hover:underline"
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
                         >
                           Open Thread <ExternalLink className="h-3 w-3" />
                         </a>
@@ -213,7 +214,7 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Forum Score:{" "}
-                      <span className="text-amber-300">
+                      <span className="text-amber-600 dark:text-amber-300">
                         {game.score > 0
                           ? `${game.score.toFixed(1)} / 5 (${game.votes} reviews)`
                           : "Unrated"}
