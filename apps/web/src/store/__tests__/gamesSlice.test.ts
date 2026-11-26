@@ -68,6 +68,7 @@ const SAMPLE_DETAIL: GameDetail = {
   unknownTagsFlag: false,
   imageUrl: "",
   previewsUrls: [],
+  galleryFiles: [],
   downloads: [],
   reviewsTotal: 0,
   reviews: [],
