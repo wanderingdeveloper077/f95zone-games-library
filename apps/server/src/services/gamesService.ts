@@ -452,10 +452,13 @@ export class GamesService {
     const targetCount = gameIds
       ? gameIds.length
       : this.db
-          .select({ id: schema.games.id })
+          .select({
+            custom: schema.games.custom,
+            archived: schema.games.archived,
+          })
           .from(schema.games)
           .all()
-          .filter((g) => !g.id.toString().startsWith("-")).length;
+          .filter((g) => !g.custom && (force || !g.archived)).length;
 
     const job = createJobRecord(this.db, kind, targetCount, {
       gameIds,
