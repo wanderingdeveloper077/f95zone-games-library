@@ -58,6 +58,7 @@ export type ResolvedCover =
 
 export interface CoverResolver {
   resolveCover(filename: string): ResolvedCover;
+  resolveGalleryImage(gameId: number, filename: string): ResolvedCover;
 }
 
 export interface LaunchErrorResult {
