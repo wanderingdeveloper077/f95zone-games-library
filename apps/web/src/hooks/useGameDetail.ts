@@ -28,6 +28,12 @@ export function useGameDetail() {
   const tagHighlights = useAppSelector(
     (s) => s.system.settings?.tagHighlights
   );
+  const downloadGalleryImages = useAppSelector(
+    (s) => s.system.settings?.downloadGalleryImages ?? true
+  );
+  const sfwMode = useAppSelector(
+    (s) => s.system.settings?.sfwMode ?? s.system.cachedSfwMode
+  );
 
   useEffect(() => {
     if (selectedGameId !== null) {
@@ -145,6 +151,8 @@ export function useGameDetail() {
     launching,
     launchError,
     tagHighlights,
+    downloadGalleryImages,
+    sfwMode,
     reIndex,
     updateRating,
     saveNotes,
