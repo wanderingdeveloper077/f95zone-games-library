@@ -329,7 +329,7 @@ describe("Fastify API security, pairing, CRUD, and static protection", () => {
     expect(traversal.statusCode).toBe(400);
   });
 
-  it("defaults downloadGalleryImages to true and sfwMode to false, and persists updates via PATCH /api/settings", async () => {
+  it("defaults downloadGalleryImages to true, sfwMode to false, and theme to dark, and persists updates via PATCH /api/settings", async () => {
     const { app } = await createTestServer();
 
     const getInitial = await app.inject({
@@ -339,15 +339,21 @@ describe("Fastify API security, pairing, CRUD, and static protection", () => {
     expect(getInitial.statusCode).toBe(200);
     expect(getInitial.json().settings.downloadGalleryImages).toBe(true);
     expect(getInitial.json().settings.sfwMode).toBe(false);
+    expect(getInitial.json().settings.theme).toBe("dark");
 
     const patched = await app.inject({
       method: "PATCH",
       url: "/api/settings",
-      payload: { downloadGalleryImages: false, sfwMode: true },
+      payload: {
+        downloadGalleryImages: false,
+        sfwMode: true,
+        theme: "catppuccin",
+      },
     });
     expect(patched.statusCode).toBe(200);
     expect(patched.json().settings.downloadGalleryImages).toBe(false);
     expect(patched.json().settings.sfwMode).toBe(true);
+    expect(patched.json().settings.theme).toBe("catppuccin");
 
     const getAfter = await app.inject({
       method: "GET",
@@ -356,5 +362,6 @@ describe("Fastify API security, pairing, CRUD, and static protection", () => {
     expect(getAfter.statusCode).toBe(200);
     expect(getAfter.json().settings.downloadGalleryImages).toBe(false);
     expect(getAfter.json().settings.sfwMode).toBe(true);
+    expect(getAfter.json().settings.theme).toBe("catppuccin");
   });
 });
