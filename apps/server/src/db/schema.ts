@@ -61,6 +61,10 @@ export const gameMetadata = sqliteTable("game_metadata", {
     .$type<string[]>()
     .notNull()
     .default([]),
+  galleryFilesJson: text("gallery_files_json", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
   downloadsJson: text("downloads_json", { mode: "json" })
     .$type<DownloadSection[]>()
     .notNull()
@@ -120,6 +124,12 @@ export const appSettings = sqliteTable("app_settings", {
     .notNull()
     .default("https://api.f95checker.dev"),
   scrapeDelayMs: integer("scrape_delay_ms").notNull().default(1000),
+  downloadGalleryImages: integer("download_gallery_images", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  sfwMode: integer("sfw_mode", { mode: "boolean" })
+    .notNull()
+    .default(false),
   extIconGlow: integer("ext_icon_glow", { mode: "boolean" })
     .notNull()
     .default(true),
