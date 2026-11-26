@@ -291,4 +291,70 @@ describe("Fastify API security, pairing, CRUD, and static protection", () => {
     });
     expect(tagFiltered.json().games).toEqual([]);
   });
+
+  it("serves cached gallery images safely and exposes galleryFiles in GET /api/games/:id", async () => {
+    const { app, config } = await createTestServer();
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/games",
+      payload: { custom: true, name: "Gallery API Game", version: "1.0" },
+    });
+    const gameId = created.json().added[0].id as number;
+
+    const detailRes = await app.inject({
+      method: "GET",
+      url: `/api/games/${gameId}`,
+    });
+    expect(detailRes.statusCode).toBe(200);
+    expect(detailRes.json().game.galleryFiles).toEqual([]);
+
+    const galleryDir = path.join(config.coversDir, "gallery", String(gameId));
+    fs.mkdirSync(galleryDir, { recursive: true });
+    const pngStub = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    fs.writeFileSync(path.join(galleryDir, "sample.png"), pngStub);
+
+    const imgRes = await app.inject({
+      method: "GET",
+      url: `/covers/gallery/${gameId}/sample.png`,
+    });
+    expect(imgRes.statusCode).toBe(200);
+    expect(imgRes.headers["content-type"]).toBe("image/png");
+    expect(imgRes.headers["cache-control"]).toBe("public, max-age=86400");
+
+    const traversal = await app.inject({
+      method: "GET",
+      url: `/covers/gallery/${gameId}/..%2F..%2Flibrary.db`,
+    });
+    expect(traversal.statusCode).toBe(400);
+  });
+
+  it("defaults downloadGalleryImages to true and sfwMode to false, and persists updates via PATCH /api/settings", async () => {
+    const { app } = await createTestServer();
+
+    const getInitial = await app.inject({
+      method: "GET",
+      url: "/api/settings",
+    });
+    expect(getInitial.statusCode).toBe(200);
+    expect(getInitial.json().settings.downloadGalleryImages).toBe(true);
+    expect(getInitial.json().settings.sfwMode).toBe(false);
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      payload: { downloadGalleryImages: false, sfwMode: true },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().settings.downloadGalleryImages).toBe(false);
+    expect(patched.json().settings.sfwMode).toBe(true);
+
+    const getAfter = await app.inject({
+      method: "GET",
+      url: "/api/settings",
+    });
+    expect(getAfter.statusCode).toBe(200);
+    expect(getAfter.json().settings.downloadGalleryImages).toBe(false);
+    expect(getAfter.json().settings.sfwMode).toBe(true);
+  });
 });
