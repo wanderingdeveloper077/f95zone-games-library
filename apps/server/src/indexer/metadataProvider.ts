@@ -47,7 +47,11 @@ export class CacheApiMetadataProvider implements MetadataProvider {
   }
 
   async fetchThread(ctx: MetadataFetchContext): Promise<ScrapeResult> {
-    return fetchThreadFromCacheApi(ctx.threadId, this.cacheApiUrl);
+    return fetchThreadFromCacheApi(
+      ctx.threadId,
+      this.cacheApiUrl,
+      ctx.knownBulkVersion
+    );
   }
 }
 
