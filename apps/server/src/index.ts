@@ -5,7 +5,18 @@ import { createSleepWakeServer } from "./runtime/sleepWakeServer.js";
 
 async function main() {
   const config = resolveConfig();
-  const gateway = createSleepWakeServer(config);
+  const exitOnIdle = process.env.EXIT_ON_IDLE !== "0";
+  const gateway = createSleepWakeServer(config, {
+    exitOnIdle,
+    idleGraceMs: 2000,
+    unattachedWakeGraceMs: 30_000,
+    onIdleExit: () => {
+      console.log(
+        "[server] Dashboard closed; terminating Game Library Manager process."
+      );
+      process.exit(0);
+    },
+  });
   const appUrl = `http://${config.host}:${config.port}/`;
   const shouldOpenBrowser =
     process.env.OPEN_BROWSER !== undefined
