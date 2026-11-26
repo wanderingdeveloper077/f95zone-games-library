@@ -1,11 +1,13 @@
 import type {
   AccountStatus,
   AppSettings,
+  AppThemeId,
   IndexJob,
   PairingStatus,
   UpdateAppSettings,
 } from "@game-library/shared";
 import { type PayloadAction, createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { persistTheme, readInitialTheme } from "@/lib/theme";
 import { type NormalizedApiError, toNormalizedApiError } from "@/services/api";
 import {
   cancelJob,
@@ -56,6 +58,8 @@ export interface SystemState {
   verifyingAccount: boolean;
   settings: AppSettings | null;
   cachedSfwMode: boolean;
+  cachedTheme: AppThemeId;
+  previewTheme: AppThemeId | null;
   settingsLoading: boolean;
   settingsSaving: boolean;
   settingsError: string | null;
@@ -77,6 +81,8 @@ const initialState: SystemState = {
   verifyingAccount: false,
   settings: null,
   cachedSfwMode: readInitialSfwMode(),
+  cachedTheme: readInitialTheme(),
+  previewTheme: null,
   settingsLoading: false,
   settingsSaving: false,
   settingsError: null,
@@ -258,6 +264,9 @@ const systemSlice = createSlice({
     clearStatusNotice(state) {
       state.statusNotice = null;
     },
+    setPreviewTheme(state, action: PayloadAction<AppThemeId | null>) {
+      state.previewTheme = action.payload;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -318,7 +327,9 @@ const systemSlice = createSlice({
         state.settingsLoading = false;
         state.settings = action.payload;
         state.cachedSfwMode = action.payload.sfwMode;
+        state.cachedTheme = action.payload.theme;
         persistSfwMode(action.payload.sfwMode);
+        persistTheme(action.payload.theme);
       })
       .addCase(fetchSettingsThunk.rejected, (state, action) => {
         state.settingsLoading = false;
@@ -336,7 +347,10 @@ const systemSlice = createSlice({
         state.settingsSaving = false;
         state.settings = action.payload;
         state.cachedSfwMode = action.payload.sfwMode;
+        state.cachedTheme = action.payload.theme;
+        state.previewTheme = null;
         persistSfwMode(action.payload.sfwMode);
+        persistTheme(action.payload.theme);
       })
       .addCase(updateSettingsThunk.rejected, (state, action) => {
         state.settingsSaving = false;
@@ -413,6 +427,7 @@ export const {
   sseJobCompleted,
   sseJobFailed,
   sseAccountUpdated,
+  setPreviewTheme,
   setStatusNotice,
   clearStatusNotice,
 } = systemSlice.actions;
