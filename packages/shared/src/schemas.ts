@@ -263,12 +263,44 @@ export const PairingExchangeResponseSchema = z.object({
 });
 export type PairingExchangeResponse = z.infer<typeof PairingExchangeResponseSchema>;
 
+export const APP_THEME_IDS = [
+  "dark",
+  "light",
+  "system",
+  "midnight",
+  "catppuccin",
+  "dracula",
+  "emerald",
+] as const;
+
+export const AppThemeIdSchema = z.enum(APP_THEME_IDS);
+export type AppThemeId = z.infer<typeof AppThemeIdSchema>;
+
+export interface AppThemeMeta {
+  id: AppThemeId;
+  label: string;
+  group: "mode" | "palette";
+  isDark: boolean | "system";
+  swatch: string;
+}
+
+export const APP_THEMES: readonly AppThemeMeta[] = [
+  { id: "dark", label: "Dark (Crimson)", group: "mode", isDark: true, swatch: "#e11d48" },
+  { id: "light", label: "Light", group: "mode", isDark: false, swatch: "#f8fafc" },
+  { id: "system", label: "System", group: "mode", isDark: "system", swatch: "#737373" },
+  { id: "midnight", label: "Midnight Blue", group: "palette", isDark: true, swatch: "#3b82f6" },
+  { id: "catppuccin", label: "Catppuccin Mocha", group: "palette", isDark: true, swatch: "#cba6f7" },
+  { id: "dracula", label: "Dracula", group: "palette", isDark: true, swatch: "#bd93f9" },
+  { id: "emerald", label: "Emerald Forest", group: "palette", isDark: true, swatch: "#10b981" },
+];
+
 export const AppSettingsSchema = z.object({
   useCacheApiFallback: z.boolean(),
   cacheApiUrl: z.string().url(),
   scrapeDelayMs: z.number().int().min(250).max(10000),
   downloadGalleryImages: z.boolean(),
   sfwMode: z.boolean(),
+  theme: AppThemeIdSchema,
   extIconGlow: z.boolean(),
   extHighlightTags: z.boolean(),
   tagHighlights: z.record(z.string(), TagHighlightIdSchema),
