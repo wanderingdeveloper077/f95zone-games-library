@@ -1,21 +1,38 @@
 import type { GameDetail } from "@game-library/shared";
 import { ExternalLink } from "lucide-react";
+import { GameGalleryTab } from "@/components/game-detail/GameGalleryTab";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export type GameDetailTab = "overview" | "changelog" | "downloads" | "reviews";
+export type GameDetailTab =
+  | "overview"
+  | "gallery"
+  | "changelog"
+  | "downloads"
+  | "reviews";
 
 export interface GameDetailTabsProps {
   content: Pick<
     GameDetail,
-    "description" | "changelog" | "downloads" | "reviews"
+    | "id"
+    | "name"
+    | "custom"
+    | "description"
+    | "changelog"
+    | "downloads"
+    | "reviews"
+    | "galleryFiles"
   >;
+  downloadGalleryImages?: boolean;
+  sfwMode?: boolean;
   activeTab: GameDetailTab;
   onTabChange: (tab: GameDetailTab) => void;
 }
 
 export function GameDetailTabs({
   content,
+  downloadGalleryImages = true,
+  sfwMode = false,
   activeTab,
   onTabChange,
 }: GameDetailTabsProps) {
@@ -25,9 +42,12 @@ export function GameDetailTabs({
       onValueChange={(value) => onTabChange(value as GameDetailTab)}
       className="w-full"
     >
-      <TabsList className="w-full justify-start">
+      <TabsList className="w-full justify-start overflow-x-auto">
         <TabsTrigger value="overview" className="flex-none">
           Overview
+        </TabsTrigger>
+        <TabsTrigger value="gallery" className="flex-none">
+          Gallery ({content.galleryFiles.length})
         </TabsTrigger>
         <TabsTrigger value="changelog" className="flex-none">
           Changelog
@@ -47,6 +67,17 @@ export function GameDetailTabs({
         <pre className="whitespace-pre-wrap font-sans">
           {content.description || "No description parsed yet."}
         </pre>
+      </TabsContent>
+
+      <TabsContent value="gallery">
+        <GameGalleryTab
+          gameId={content.id}
+          gameName={content.name}
+          custom={content.custom}
+          galleryFiles={content.galleryFiles}
+          downloadGalleryImages={downloadGalleryImages}
+          sfwMode={sfwMode}
+        />
       </TabsContent>
 
       <TabsContent
