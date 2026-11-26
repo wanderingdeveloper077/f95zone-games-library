@@ -7,7 +7,8 @@ export interface EventBroadcaster {
 
 export interface SseClientRegistry {
   readonly clientCount: number;
-  addClient(res: ServerResponse, originHeader?: string): void;
+  addClient(res: ServerResponse, originHeader?: string, clientKey?: string): void;
+  removeClient(clientKey: string): boolean;
   closeAll(): void;
 }
 
