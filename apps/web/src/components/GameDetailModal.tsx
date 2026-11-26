@@ -35,6 +35,8 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { useGameDetail } from "@/hooks/useGameDetail";
+import { getSfwImageBlurClass } from "@/lib/gamePresentation";
+import { cn } from "@/lib/utils";
 
 interface GameDetailModalProps {
   onClose: () => void;
@@ -51,6 +53,8 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
     launching,
     launchError,
     tagHighlights,
+    downloadGalleryImages,
+    sfwMode,
     reIndex,
     updateRating,
     saveNotes,
@@ -95,7 +99,7 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
               {game?.name ?? "Loading..."}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Game metadata, downloads, reviews, and personal library notes.
+              Game metadata, gallery, downloads, reviews, and personal library notes.
             </DialogDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -148,7 +152,10 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
                     <img
                       src={`/covers/${encodeURIComponent(game.coverFile)}`}
                       alt={game.name}
-                      className="h-44 w-full object-cover"
+                      className={cn(
+                        "h-44 w-full object-cover transition duration-200",
+                        getSfwImageBlurClass(sfwMode)
+                      )}
                     />
                   ) : (
                     <div className="flex h-44 items-center justify-center text-xs text-muted-foreground">
@@ -265,6 +272,8 @@ export function GameDetailModal({ onClose }: GameDetailModalProps) {
 
               <GameDetailTabs
                 content={game}
+                downloadGalleryImages={downloadGalleryImages}
+                sfwMode={sfwMode}
                 activeTab={tab}
                 onTabChange={setTab}
               />
