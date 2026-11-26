@@ -1,5 +1,6 @@
 import type {
   AccountStatusValue,
+  AppThemeId,
   DownloadSection,
   IndexJobKind,
   IndexJobStatus,
@@ -130,6 +131,7 @@ export const appSettings = sqliteTable("app_settings", {
   sfwMode: integer("sfw_mode", { mode: "boolean" })
     .notNull()
     .default(false),
+  theme: text("theme").$type<AppThemeId>().notNull().default("dark"),
   extIconGlow: integer("ext_icon_glow", { mode: "boolean" })
     .notNull()
     .default(true),
