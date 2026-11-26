@@ -20,7 +20,12 @@ import {
 
 export type IndexerPreferences = Pick<
   AppSettings,
-  "useCacheApiFallback" | "extIconGlow" | "extHighlightTags" | "scrapeDelayMs"
+  | "useCacheApiFallback"
+  | "downloadGalleryImages"
+  | "sfwMode"
+  | "extIconGlow"
+  | "extHighlightTags"
+  | "scrapeDelayMs"
 >;
 
 export interface IndexerSettingsFormProps {
@@ -41,6 +46,8 @@ export function IndexerSettingsForm({
 
   const {
     useCacheApiFallback,
+    downloadGalleryImages,
+    sfwMode,
     extIconGlow,
     extHighlightTags,
     scrapeDelayMs,
@@ -49,12 +56,16 @@ export function IndexerSettingsForm({
   useEffect(() => {
     form.reset({
       useCacheApiFallback,
+      downloadGalleryImages,
+      sfwMode,
       extIconGlow,
       extHighlightTags,
       scrapeDelayMs,
     });
   }, [
     useCacheApiFallback,
+    downloadGalleryImages,
+    sfwMode,
     extIconGlow,
     extHighlightTags,
     scrapeDelayMs,
@@ -82,6 +93,42 @@ export function IndexerSettingsForm({
             <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
               <FormLabel className="cursor-pointer font-normal text-neutral-300">
                 Fallback to Cache API on Cloudflare block
+              </FormLabel>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="downloadGalleryImages"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+              <FormLabel className="cursor-pointer font-normal text-neutral-300">
+                Download gallery images on refresh
+              </FormLabel>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="sfwMode"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+              <FormLabel className="cursor-pointer font-normal text-neutral-300">
+                SFW mode (blur covers and gallery images)
               </FormLabel>
               <FormControl>
                 <Switch
