@@ -1,9 +1,28 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Game Library Manager</title>
+    <script>
+      (() => {
+        try {
+          const valid = new Set(["dark", "light", "system", "midnight", "catppuccin", "dracula", "emerald"]);
+          const stored = localStorage.getItem("gl_theme");
+          const choice = stored && valid.has(stored) ? stored : "dark";
+          const prefersDark = typeof window.matchMedia === "function"
+            ? window.matchMedia("(prefers-color-scheme: dark)").matches
+            : true;
+          const effective = choice === "system" ? (prefersDark ? "dark" : "light") : choice;
+          const isDark = effective !== "light";
+          const root = document.documentElement;
+          root.classList.toggle("dark", isDark);
+          root.dataset.theme = effective;
+        } catch {
+          // Ignore FOUC script errors and fall back to default dark theme.
+        }
+      })();
+    </script>
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/32.png" />
     <link rel="icon" type="image/png" sizes="48x48" href="/icons/48.png" />
