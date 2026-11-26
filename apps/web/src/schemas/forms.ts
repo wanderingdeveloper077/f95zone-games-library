@@ -52,6 +52,8 @@ export type AddExecutableFormValues = z.infer<typeof addExecutableFormSchema>;
 
 export const indexerSettingsFormSchema = z.object({
   useCacheApiFallback: z.boolean(),
+  downloadGalleryImages: z.boolean(),
+  sfwMode: z.boolean(),
   extIconGlow: z.boolean(),
   extHighlightTags: z.boolean(),
   scrapeDelayMs: z
