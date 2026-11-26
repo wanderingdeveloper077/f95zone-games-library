@@ -15,6 +15,9 @@ export function useSystemStatus() {
   const f95Account = useAppSelector((s) =>
     s.system.accounts.find((a) => a.id === "f95zone")
   );
+  const sfwMode = useAppSelector(
+    (s) => s.system.settings?.sfwMode ?? s.system.cachedSfwMode
+  );
 
   useEffect(() => {
     void dispatch(fetchAccountsThunk());
@@ -34,6 +37,7 @@ export function useSystemStatus() {
     currentItemName,
     lastJobError,
     accountStatus: f95Account?.status,
+    sfwMode,
     cancelJob,
   };
 }
