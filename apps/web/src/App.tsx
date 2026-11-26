@@ -47,6 +47,7 @@ export function App() {
     currentItemName,
     lastJobError,
     accountStatus,
+    sfwMode,
     cancelJob,
   } = useSystemStatus();
 
@@ -107,6 +108,7 @@ export function App() {
           hasMore={hasMore}
           loadingMore={loadingMore}
           viewMode={viewMode}
+          sfwMode={sfwMode}
           launchingGameId={launchingGameId}
           onSelectGame={(id) => selectGame(id)}
           onPlayGame={playGame}
