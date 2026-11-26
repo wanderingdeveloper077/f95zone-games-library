@@ -80,7 +80,7 @@ export function IndexingBanner({
               variant="outline"
               size="xs"
               onClick={onOpenSettings}
-              className="border-amber-600/50 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 hover:text-amber-100"
+              className="border-amber-600/50 bg-amber-500/20 text-amber-900 hover:bg-amber-500/30 dark:text-amber-200 dark:hover:text-amber-100"
             >
               Check Session
             </Button>
