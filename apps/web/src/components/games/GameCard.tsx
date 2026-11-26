@@ -10,11 +10,12 @@ import { GameStateActions } from "@/components/games/GameStateActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { formatUnixDate } from "@/lib/gamePresentation";
+import { formatUnixDate, getSfwImageBlurClass } from "@/lib/gamePresentation";
 import { cn } from "@/lib/utils";
 
 export interface GameCardProps {
   game: GameSummary;
+  sfwMode?: boolean;
   launching?: boolean;
   onSelect: (id: number) => void;
   onPlay: (game: GameSummary) => void;
@@ -24,6 +25,7 @@ export interface GameCardProps {
 
 export function GameCard({
   game,
+  sfwMode = false,
   launching = false,
   onSelect,
   onPlay,
@@ -45,7 +47,10 @@ export function GameCard({
             src={`/covers/${encodeURIComponent(game.coverFile)}`}
             alt={game.name}
             loading="lazy"
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+            className={cn(
+              "h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]",
+              getSfwImageBlurClass(sfwMode)
+            )}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-700">
