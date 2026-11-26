@@ -154,20 +154,70 @@ const THREAD_MISSING_MESSAGES = new Set([
   "You do not have permission to view this page or perform this action.",
 ]);
 
+const F95_ATTACHMENT_PREFIXES = [
+  "https://preview.f95zone.to/",
+  "https://preview.f95zone.com/",
+  "https://preview.f95zone.ninja/",
+  "https://attachments.f95zone.com/",
+  "https://attachments.f95zone.ninja/",
+] as const;
+
+const NON_IMAGE_ATTACHMENT_EXTENSIONS = new Set([
+  ".zip",
+  ".rar",
+  ".7z",
+  ".tar",
+  ".gz",
+  ".pdf",
+  ".txt",
+  ".mp4",
+  ".webm",
+  ".mkv",
+  ".avi",
+  ".mov",
+  ".apk",
+  ".exe",
+]);
+
 /**
- * Port of _reference-repo/common/parser.py:attachment().
+ * Port of _reference-repo/common/parser.py:attachment() with CDN/thumb normalization.
  */
 export function normalizeAttachmentUrl(rawUrl: string): string {
-  let url = rawUrl;
-  if (url.startsWith("https://preview.f95zone.to/")) {
-    url =
-      "https://attachments.f95zone.to/" +
-      url.slice("https://preview.f95zone.to/".length);
+  let url = rawUrl.trim();
+  for (const prefix of F95_ATTACHMENT_PREFIXES) {
+    if (url.startsWith(prefix)) {
+      url = "https://attachments.f95zone.to/" + url.slice(prefix.length);
+      break;
+    }
   }
   if (url.startsWith("https://attachments.f95zone.to/") && url.includes("?h=")) {
     url = url.split("?h=")[0] ?? url;
   }
+  url = url.replace(
+    /^(https:\/\/attachments\.f95zone\.to\/\d{4}\/\d{2})\/thumb\//,
+    "$1/"
+  );
   return url;
+}
+
+/**
+ * Returns true if a normalized URL points to an F95zone attachment image.
+ */
+export function isF95AttachmentImageUrl(url: string): boolean {
+  const prefix = "https://attachments.f95zone.to/";
+  if (!url.startsWith(prefix) || url.length <= prefix.length) {
+    return false;
+  }
+  const withoutHash = url.split("#")[0] ?? url;
+  const pathname = (withoutHash.split("?")[0] ?? withoutHash).toLowerCase();
+  const dotIdx = pathname.lastIndexOf(".");
+  if (dotIdx !== -1) {
+    const ext = pathname.slice(dotIdx);
+    if (NON_IMAGE_ATTACHMENT_EXTENSIONS.has(ext)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
