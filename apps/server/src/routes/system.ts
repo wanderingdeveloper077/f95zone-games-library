@@ -15,6 +15,10 @@ const JobIdParamSchema = z.object({
   id: z.string().min(1),
 });
 
+const ClientIdQuerySchema = z.object({
+  clientId: z.string().min(1).max(128).optional(),
+});
+
 export interface SystemRouteDeps {
   healthInfo: {
     journalMode: string;
@@ -127,8 +131,22 @@ export function registerSystemRoutes(
       const origin = request.headers.origin;
       const allowedOrigin =
         origin && deps.isAllowedOrigin(origin) ? origin : undefined;
+      const parsed = ClientIdQuerySchema.safeParse(request.query);
+      const clientId = parsed.success ? parsed.data.clientId : undefined;
       reply.hijack();
-      deps.sseRegistry.addClient(reply.raw, allowedOrigin);
+      deps.sseRegistry.addClient(reply.raw, allowedOrigin, clientId);
+    }
+  );
+
+  app.post(
+    "/api/system/client-closing",
+    { preHandler: deps.requireLocalUiOrigin },
+    async (request, reply) => {
+      const parsed = ClientIdQuerySchema.safeParse(request.query);
+      if (parsed.success && parsed.data.clientId) {
+        deps.sseRegistry.removeClient(parsed.data.clientId);
+      }
+      return reply.code(204).send();
     }
   );
 }
