@@ -106,14 +106,29 @@ describe("Frontend Zod form schemas", () => {
     expect(
       indexerSettingsFormSchema.safeParse({
         useCacheApiFallback: true,
+        downloadGalleryImages: true,
+        sfwMode: false,
         extIconGlow: false,
         extHighlightTags: true,
         scrapeDelayMs: 1250,
       }).success
     ).toBe(true);
 
+    expect(
+      indexerSettingsFormSchema.safeParse({
+        useCacheApiFallback: false,
+        downloadGalleryImages: false,
+        sfwMode: true,
+        extIconGlow: false,
+        extHighlightTags: false,
+        scrapeDelayMs: 500,
+      }).success
+    ).toBe(true);
+
     const tooLow = indexerSettingsFormSchema.safeParse({
       useCacheApiFallback: true,
+      downloadGalleryImages: true,
+      sfwMode: false,
       extIconGlow: true,
       extHighlightTags: true,
       scrapeDelayMs: 100,
@@ -125,6 +140,8 @@ describe("Frontend Zod form schemas", () => {
 
     const nanRes = indexerSettingsFormSchema.safeParse({
       useCacheApiFallback: true,
+      downloadGalleryImages: true,
+      sfwMode: false,
       extIconGlow: true,
       extHighlightTags: true,
       scrapeDelayMs: Number.NaN,
@@ -186,6 +203,8 @@ describe("systemSlice settingsSaving transitions", () => {
       useCacheApiFallback: true,
       cacheApiUrl: "http://127.0.0.1:57095",
       scrapeDelayMs: 1500,
+      downloadGalleryImages: false,
+      sfwMode: true,
       extIconGlow: false,
       extHighlightTags: true,
       tagHighlights: { "3dcg": TagHighlight.Positive },
@@ -195,12 +214,13 @@ describe("systemSlice settingsSaving transitions", () => {
       updatedSettings
     );
     const pendingPromise = store.dispatch(
-      updateSettingsThunk({ scrapeDelayMs: 1500 })
+      updateSettingsThunk({ scrapeDelayMs: 1500, sfwMode: true })
     );
     expect(store.getState().system.settingsSaving).toBe(true);
     await pendingPromise;
     expect(store.getState().system.settingsSaving).toBe(false);
     expect(store.getState().system.settings).toEqual(updatedSettings);
+    expect(store.getState().system.cachedSfwMode).toBe(true);
     expect(store.getState().system.settingsError).toBeNull();
 
     vi.mocked(systemService.updateSettings).mockRejectedValueOnce(
