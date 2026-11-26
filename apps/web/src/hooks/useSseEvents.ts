@@ -13,6 +13,16 @@ import {
   sseJobStarted,
 } from "@/store/slices/systemSlice";
 
+function createSseClientId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function useSseEvents(): void {
   const dispatch = useAppDispatch();
   const appStore = useAppStore();
@@ -35,7 +45,7 @@ export function useSseEvents(): void {
           );
           break;
         case "job_completed": {
-          dispatch(sseJobCompleted());
+          dispatch(sseJobCompleted(event.job));
           const { filter } = appStore.getState().games;
           void dispatch(
             fetchGamesThunk({ filter, preserveLoadedCount: true })
@@ -68,21 +78,40 @@ export function useSseEvents(): void {
       }
     };
 
-    const connect = () =>
-      subscribeToEvents(`${API_BASE_URL}/api/events`, {
-        onOpen: () => dispatch(sseConnectionChanged(true)),
-        onError: () => dispatch(sseConnectionChanged(false)),
-        onEvent: handleEvent,
-      });
+    let currentClientId: string | null = null;
+
+    const connect = () => {
+      const clientId = createSseClientId();
+      currentClientId = clientId;
+      return subscribeToEvents(
+        `${API_BASE_URL}/api/events?clientId=${encodeURIComponent(clientId)}`,
+        {
+          onOpen: () => dispatch(sseConnectionChanged(true)),
+          onError: () => dispatch(sseConnectionChanged(false)),
+          onEvent: handleEvent,
+        }
+      );
+    };
 
     let closeSse: (() => void) | null = connect();
 
-    // Close the SSE stream immediately when leaving/closing the tab so bfcache
-    // does not delay server idle shutdown.
+    // Close the SSE stream and notify the server immediately when leaving/closing
+    // the tab so shutdown is not delayed by OS socket teardown or bfcache.
     const handlePageHide = () => {
+      const closingId = currentClientId;
+      currentClientId = null;
       closeSse?.();
       closeSse = null;
       dispatch(sseConnectionChanged(false));
+      if (
+        closingId &&
+        typeof navigator !== "undefined" &&
+        typeof navigator.sendBeacon === "function"
+      ) {
+        navigator.sendBeacon(
+          `${API_BASE_URL}/api/system/client-closing?clientId=${encodeURIComponent(closingId)}`
+        );
+      }
     };
 
     const handlePageShow = (event: PageTransitionEvent) => {
@@ -99,6 +128,7 @@ export function useSseEvents(): void {
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("pageshow", handlePageShow);
+      currentClientId = null;
       closeSse?.();
       closeSse = null;
     };
