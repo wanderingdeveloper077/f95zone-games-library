@@ -1,0 +1,94 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [
+          { "type": "feat", "release": "minor" },
+          { "type": "fix", "release": "patch" },
+          { "type": "perf", "release": "patch" },
+          { "type": "revert", "release": "patch" },
+          { "breaking": true, "release": "major" }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {
+          "types": [
+            { "type": "feat", "section": "Features" },
+            { "type": "fix", "section": "Bug Fixes" },
+            { "type": "perf", "section": "Performance Improvements" },
+            { "type": "revert", "section": "Reverts" },
+            { "type": "docs", "section": "Documentation", "hidden": false },
+            { "type": "refactor", "section": "Code Refactoring", "hidden": false },
+            { "type": "build", "section": "Build System", "hidden": false },
+            { "type": "style", "section": "Styles", "hidden": true },
+            { "type": "test", "section": "Tests", "hidden": true },
+            { "type": "ci", "section": "Continuous Integration", "hidden": true },
+            { "type": "chore", "section": "Chores", "hidden": true }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md",
+        "changelogTitle": "# Changelog\n\nAll notable changes to the **Game Library Manager** project are documented in this file."
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "verifyReleaseCmd": "node scripts/sync-version.mjs --write-marker ${nextRelease.version}",
+        "prepareCmd": "node scripts/sync-version.mjs ${nextRelease.version}"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": [
+          "CHANGELOG.md",
+          "package.json",
+          "packages/shared/package.json",
+          "packages/shared/src/version.ts",
+          "apps/server/package.json",
+          "apps/web/package.json",
+          "apps/extension/package.json"
+        ],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "release/artifacts/Game-Library-Manager-*-win-x64.zip",
+            "label": "Game Library Manager — Windows x64 Standalone (.zip)"
+          },
+          {
+            "path": "release/artifacts/Game-Library-Manager-*-macos-arm64.dmg",
+            "label": "Game Library Manager — macOS Apple Silicon arm64 (.dmg)"
+          },
+          {
+            "path": "release/artifacts/Game-Library-Manager-Extension-*-chrome-mv3.zip",
+            "label": "Browser Companion Extension — Chrome MV3 (.zip)"
+          },
+          {
+            "path": "release/artifacts/Game-Library-Manager-Extension-*-firefox-mv2.zip",
+            "label": "Browser Companion Extension — Firefox (.zip)"
+          }
+        ],
+        "successComment": false,
+        "failTitle": false
+      }
+    ]
+  ]
+}
