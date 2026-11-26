@@ -118,6 +118,7 @@ export function initializeDatabase(
       scrapeDelayMs: 1000,
       downloadGalleryImages: true,
       sfwMode: false,
+      theme: "dark",
       extIconGlow: true,
       extHighlightTags: true,
       tagHighlightsJson: {},
