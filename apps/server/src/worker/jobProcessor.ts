@@ -21,7 +21,10 @@ import {
 } from "../db/queries.js";
 import * as schema from "../db/schema.js";
 import type { IndexerError, IndexerErrorFlag } from "../indexer/f95zone.js";
-import { downloadCoverImage } from "../indexer/images.js";
+import {
+  downloadCoverImage,
+  downloadGalleryImages,
+} from "../indexer/images.js";
 import {
   CacheApiMetadataProvider,
   DirectF95MetadataProvider,
@@ -66,7 +69,9 @@ export interface IndexJobProcessorDeps {
   fetchBulkVersions?: typeof fetchBulkVersions;
   fetchFastTimestamps?: typeof fetchFastCheckTimestamps;
   downloadCover?: typeof downloadCoverImage;
+  downloadGallery?: typeof downloadGalleryImages;
   coverExists?: (coverFile: string) => boolean;
+  galleryFileExists?: (gameId: number, filename: string) => boolean;
   now?: () => number;
 }
 
@@ -87,6 +92,7 @@ export function computeContentHash(data: ScrapedThreadData): string {
         changelog: data.changelog,
         tags: data.tags,
         imageUrl: data.imageUrl,
+        previewsUrls: data.previewsUrls,
         downloads: data.downloads,
       })
     )
@@ -103,6 +109,7 @@ export function shouldScrapeGame(params: {
   bulkVersion: string | undefined;
   fastChangedAtSec?: number | undefined;
   coverExists: boolean;
+  galleryFilesExist?: boolean;
   nowMs: number;
 }): boolean {
   const {
@@ -112,6 +119,7 @@ export function shouldScrapeGame(params: {
     bulkVersion,
     fastChangedAtSec,
     coverExists,
+    galleryFilesExist = true,
     nowMs,
   } = params;
   const cacheFresh =
@@ -131,6 +139,7 @@ export function shouldScrapeGame(params: {
     (Boolean(bulkVersion) && bulkVersion !== game.version) ||
     fastChanged ||
     (!coverExists && Boolean(meta?.imageUrl?.startsWith("http"))) ||
+    !galleryFilesExist ||
     !cacheFresh
   );
 }
@@ -186,7 +195,9 @@ export class IndexJobProcessor {
   private readonly fetchBulkVersionsFn: typeof fetchBulkVersions;
   private readonly fetchFastTimestampsFn: typeof fetchFastCheckTimestamps;
   private readonly downloadCoverFn: typeof downloadCoverImage;
+  private readonly downloadGalleryFn: typeof downloadGalleryImages;
   private readonly coverExistsFn: (coverFile: string) => boolean;
+  private readonly galleryFileExistsFn: (gameId: number, filename: string) => boolean;
   private readonly now: () => number;
 
   private readonly cancelledJobs = new Set<string>();
@@ -204,9 +215,16 @@ export class IndexJobProcessor {
     this.fetchFastTimestampsFn =
       deps.fetchFastTimestamps ?? fetchFastCheckTimestamps;
     this.downloadCoverFn = deps.downloadCover ?? downloadCoverImage;
+    this.downloadGalleryFn = deps.downloadGallery ?? downloadGalleryImages;
     this.coverExistsFn =
       deps.coverExists ??
       ((coverFile) => fs.existsSync(path.join(this.coversDir, coverFile)));
+    this.galleryFileExistsFn =
+      deps.galleryFileExists ??
+      ((gameId, filename) =>
+        fs.existsSync(
+          path.join(this.coversDir, "gallery", String(gameId), filename)
+        ));
     this.now = deps.now ?? Date.now;
   }
 
@@ -237,6 +255,7 @@ export class IndexJobProcessor {
       useCacheApiFallback: appSettings.useCacheApiFallback,
       cacheApiUrl: appSettings.cacheApiUrl,
       scrapeDelayMs: Math.max(250, appSettings.scrapeDelayMs),
+      downloadGalleryImages: appSettings.downloadGalleryImages,
     };
 
     const forumQueue = new PQueue({
@@ -323,6 +342,14 @@ export class IndexJobProcessor {
         const fastChangedAtSec = fastTimestamps.get(game.id);
         const coverExists =
           Boolean(game.coverFile) && this.coverExistsFn(game.coverFile!);
+        const existingGalleryFiles = Array.isArray(meta?.galleryFilesJson)
+          ? meta.galleryFilesJson
+          : [];
+        const galleryFilesExist = settings.downloadGalleryImages
+          ? existingGalleryFiles.every((filename) =>
+              this.galleryFileExistsFn(game.id, filename)
+            )
+          : true;
 
         if (
           !shouldScrapeGame({
@@ -332,6 +359,7 @@ export class IndexJobProcessor {
             bulkVersion: bulkVer,
             fastChangedAtSec,
             coverExists,
+            galleryFilesExist,
             nowMs: this.now(),
           })
         ) {
@@ -418,12 +446,44 @@ export class IndexJobProcessor {
           }
         }
 
+        const galleryFiles = settings.downloadGalleryImages
+          ? await this.downloadGalleryFn(
+              data.previewsUrls,
+              game.id,
+              this.coversDir,
+              sessionHeaders,
+              {
+                excludeUrls: [data.imageUrl, finalImageUrl],
+                schedule: (fn) => imageQueue.add(fn),
+                shouldAbort: () =>
+                  this.shuttingDown || this.cancelledJobs.has(jobId),
+              }
+            )
+          : existingGalleryFiles.filter((filename) =>
+              this.galleryFileExistsFn(game.id, filename)
+            );
+
+        if (this.shuttingDown || this.cancelledJobs.has(jobId)) {
+          const cancelled = this.updateJobRow(jobId, {
+            status: "cancelled",
+            processedCount,
+            updatedCount,
+            errorCount,
+            finishedAtMs: this.now(),
+          });
+          if (cancelled) {
+            this.emitEvent({ type: "job_completed", job: cancelled });
+          }
+          return;
+        }
+
         const { changed, versionChanged } = this.persistScrapedGame({
           game,
           meta,
           data,
           coverFile,
           finalImageUrl,
+          galleryFiles,
           hasBulkVersion: Boolean(bulkVer),
         });
 
@@ -640,10 +700,18 @@ export class IndexJobProcessor {
     data: ScrapedThreadData;
     coverFile: string | null;
     finalImageUrl: string;
+    galleryFiles: string[];
     hasBulkVersion: boolean;
   }): { changed: boolean; versionChanged: boolean } {
-    const { game, meta, data, coverFile, finalImageUrl, hasBulkVersion } =
-      params;
+    const {
+      game,
+      meta,
+      data,
+      coverFile,
+      finalImageUrl,
+      galleryFiles,
+      hasBulkVersion,
+    } = params;
     const nowMs = this.now();
     const versionChanged =
       game.status !== Status.Unchecked &&
@@ -660,8 +728,16 @@ export class IndexJobProcessor {
       : data.lastUpdated || game.lastUpdatedTsSec;
     const ttlMs = hasBulkVersion ? 7 * DAY_MS : 2 * DAY_MS;
     const contentHash = computeContentHash(data);
+    const prevGalleryFiles = Array.isArray(meta?.galleryFilesJson)
+      ? meta.galleryFilesJson
+      : [];
+    const galleryChanged =
+      JSON.stringify(prevGalleryFiles) !== JSON.stringify(galleryFiles);
     const changed =
-      !meta || meta.contentHash !== contentHash || versionChanged;
+      !meta ||
+      meta.contentHash !== contentHash ||
+      versionChanged ||
+      galleryChanged;
 
     this.sqlite.transaction(() => {
       this.db
@@ -694,6 +770,7 @@ export class IndexJobProcessor {
           unknownTagsFlag: data.unknownTags.length > 0,
           imageUrl: finalImageUrl,
           previewsUrlsJson: data.previewsUrls,
+          galleryFilesJson: galleryFiles,
           downloadsJson: data.downloads,
           reviewsTotal: data.reviewsTotal,
           reviewsJson: data.reviews,
@@ -715,6 +792,7 @@ export class IndexJobProcessor {
             unknownTagsFlag: data.unknownTags.length > 0,
             imageUrl: finalImageUrl,
             previewsUrlsJson: data.previewsUrls,
+            galleryFilesJson: galleryFiles,
             downloadsJson: data.downloads,
             reviewsTotal: data.reviewsTotal,
             reviewsJson: data.reviews,
