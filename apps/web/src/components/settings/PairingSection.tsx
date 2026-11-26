@@ -58,12 +58,12 @@ export function PairingSection({
           {activeCode && remainingSec > 0 && (
             <Badge
               variant="outline"
-              className="gap-2 border-primary/40 bg-rose-950/30 px-3 py-1.5 text-rose-200"
+              className="gap-2 border-primary/40 bg-primary/10 px-3 py-1.5 text-foreground"
             >
               <span className="font-mono text-sm font-bold tracking-widest">
                 {activeCode.code}
               </span>
-              <span className="text-[11px] text-rose-300">
+              <span className="text-[11px] text-primary">
                 {remainingSec}s
               </span>
             </Badge>
