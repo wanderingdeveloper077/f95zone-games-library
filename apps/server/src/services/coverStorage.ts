@@ -5,7 +5,7 @@ import type {
   CoverResolver,
   ResolvedCover,
 } from "../contracts/ports.js";
-import { deleteCoverFiles } from "../indexer/images.js";
+import { deleteCoverFiles, deleteGalleryFiles } from "../indexer/images.js";
 
 const COVER_FILENAME_RE = /^[a-zA-Z0-9._-]+$/;
 
@@ -27,6 +27,35 @@ export class LocalCoverStorage implements CoverResolver, CoverCleaner {
   }
 
   resolveCover(filename: string): ResolvedCover {
+    return this.resolveInDirectory(
+      path.resolve(this.coversDir),
+      filename,
+      "Cover not found."
+    );
+  }
+
+  resolveGalleryImage(gameId: number, filename: string): ResolvedCover {
+    if (!Number.isInteger(gameId)) {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: "INVALID_FILENAME",
+        message: "Invalid game ID.",
+      };
+    }
+
+    return this.resolveInDirectory(
+      path.resolve(this.coversDir, "gallery", String(gameId)),
+      filename,
+      "Gallery image not found."
+    );
+  }
+
+  private resolveInDirectory(
+    rootDir: string,
+    filename: string,
+    notFoundMessage: string
+  ): ResolvedCover {
     if (!COVER_FILENAME_RE.test(filename) || filename.includes("..")) {
       return {
         ok: false,
@@ -36,9 +65,8 @@ export class LocalCoverStorage implements CoverResolver, CoverCleaner {
       };
     }
 
-    const coversRoot = path.resolve(this.coversDir);
-    const targetPath = path.resolve(coversRoot, filename);
-    if (!targetPath.startsWith(coversRoot + path.sep)) {
+    const targetPath = path.resolve(rootDir, filename);
+    if (!targetPath.startsWith(rootDir + path.sep)) {
       return {
         ok: false,
         statusCode: 403,
@@ -52,7 +80,7 @@ export class LocalCoverStorage implements CoverResolver, CoverCleaner {
         ok: false,
         statusCode: 404,
         code: "NOT_FOUND",
-        message: "Cover not found.",
+        message: notFoundMessage,
       };
     }
 
@@ -65,6 +93,9 @@ export class LocalCoverStorage implements CoverResolver, CoverCleaner {
   }
 
   async deleteCovers(gameId: number): Promise<void> {
-    await deleteCoverFiles(gameId, this.coversDir);
+    await Promise.all([
+      deleteCoverFiles(gameId, this.coversDir),
+      deleteGalleryFiles(gameId, this.coversDir),
+    ]);
   }
 }
