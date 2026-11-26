@@ -39,6 +39,7 @@ export function SettingsPairingDrawer({
     verifySession,
     importList,
     clearSession,
+    previewTheme,
     savePreferences,
     addTagHighlight,
     removeTagHighlight,
@@ -102,7 +103,7 @@ export function SettingsPairingDrawer({
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-xs">
                   <Settings className="h-4 w-4 text-muted-foreground" />
-                  Indexer & Extension Settings
+                  Appearance, Indexer & Extension Settings
                 </CardTitle>
               </CardHeader>
 
@@ -110,6 +111,7 @@ export function SettingsPairingDrawer({
                 <IndexerSettingsForm
                   preferences={settings}
                   saving={settingsSaving}
+                  onPreviewTheme={previewTheme}
                   onSave={savePreferences}
                 />
 
