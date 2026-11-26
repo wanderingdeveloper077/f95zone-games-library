@@ -120,10 +120,10 @@ function createBadgeElement(
   badge.style.display = "inline-flex";
   badge.style.alignItems = "center";
   badge.style.justifyContent = "center";
-  badge.style.fontSize = isTile ? "11px" : "10px";
+  badge.style.fontSize = isTile ? "12px" : "10px";
   badge.style.fontWeight = "700";
   badge.style.lineHeight = "1";
-  badge.style.padding = isTile ? "4px 6px" : "2px 5px";
+  badge.style.padding = isTile ? "6px 14px" : "2px 5px";
   badge.style.borderRadius = "4px";
   badge.style.backgroundColor = "#1f2937";
   badge.style.color = game.badgeColor;
@@ -137,7 +137,7 @@ function createBadgeElement(
     badge.style.left = "6px";
     badge.style.top = "6px";
     if (iconGlow) {
-      badge.style.boxShadow = `0 0 18px 4px ${game.badgeColor}99`;
+      badge.style.boxShadow = `0 0 18px 9px ${game.badgeColor}99`;
     }
   } else {
     badge.style.marginRight = "6px";
