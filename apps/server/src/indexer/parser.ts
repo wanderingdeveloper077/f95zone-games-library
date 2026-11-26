@@ -16,7 +16,10 @@ import {
   type ThreadMatch,
 } from "@game-library/shared";
 import * as cheerio from "cheerio";
-import { normalizeAttachmentUrl } from "./f95zone.js";
+import {
+  isF95AttachmentImageUrl,
+  normalizeAttachmentUrl,
+} from "./f95zone.js";
 
 type AnyNode = ReturnType<ReturnType<cheerio.CheerioAPI>["contents"]>[number];
 type Element = Extract<AnyNode, { name: string; attribs: Record<string, string> }>;
@@ -571,14 +574,45 @@ export function parseThreadHtml(html: string): ParseResult<ParsedThread> {
     });
 
     const previewsUrls: string[] = [];
-    bbWrapper.find(".js-lbImage").each((_, el) => {
-      const href = $(el).attr("href") ?? "";
-      if (!href.startsWith("https://attachments.f95zone.to/")) return;
-      const normalized = normalizeAttachmentUrl(href);
-      if (normalized !== imageUrl && !previewsUrls.includes(normalized)) {
-        previewsUrls.push(normalized);
+    const seenPreviewUrls = new Set<string>();
+    const addPreviewUrl = (raw: string | undefined) => {
+      if (!raw) return;
+      const normalized = normalizeAttachmentUrl(raw);
+      if (
+        !isF95AttachmentImageUrl(normalized) ||
+        normalized === imageUrl ||
+        seenPreviewUrls.has(normalized)
+      ) {
+        return;
       }
-    });
+      seenPreviewUrls.add(normalized);
+      previewsUrls.push(normalized);
+    };
+
+    post
+      .find(".bbWrapper, .message-attachments")
+      .find("div[data-src], .js-lbImage, a[href], img")
+      .each((_, el) => {
+        const node = $(el);
+        if (node.is("div[data-src]")) {
+          addPreviewUrl(node.attr("data-src"));
+        } else if (node.is(".js-lbImage")) {
+          addPreviewUrl(node.attr("href") || node.attr("data-src"));
+        } else if (node.is("a[href]")) {
+          addPreviewUrl(node.attr("href"));
+        } else if (node.is("img")) {
+          if (
+            node.closest(
+              "div[data-src], .js-lbImage, a[href*='attachments.f95zone.'], a[href*='preview.f95zone.']"
+            ).length > 0
+          ) {
+            return;
+          }
+          addPreviewUrl(
+            node.attr("data-url") || node.attr("data-src") || node.attr("src")
+          );
+        }
+      });
 
     const downloads = getGameDownloads("downloads", "download");
 
