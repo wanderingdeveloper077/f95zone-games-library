@@ -15,7 +15,10 @@ const stagingDir = path.join(root, "release", ".sea-tmp");
 
 const APP_NAME = "Game Library Manager";
 const APP_ID = "com.gamelibrary.manager";
-const APP_VERSION = "1.0.0";
+const rootPackageJson = JSON.parse(
+  fs.readFileSync(path.join(root, "package.json"), "utf8")
+);
+const APP_VERSION = rootPackageJson.version || "1.0.0";
 
 function run(command, args, cwd, useShell = false) {
   return new Promise((resolve, reject) => {
