@@ -1,4 +1,10 @@
+import fs from "node:fs";
 import { defineConfig } from "wxt";
+
+const extensionPkg = JSON.parse(
+  fs.readFileSync(new URL("./package.json", import.meta.url), "utf8")
+) as { version?: string };
+const EXTENSION_VERSION = extensionPkg.version || "1.0.0";
 
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
@@ -9,7 +15,7 @@ export default defineConfig({
       short_name: "GameLibrary",
       description:
         "Sync F95zone cookies and library badges securely with your local Game Library Manager.",
-      version: "1.0.0",
+      version: EXTENSION_VERSION,
       permissions: [
         "cookies",
         "storage",
