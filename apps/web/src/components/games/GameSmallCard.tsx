@@ -18,7 +18,11 @@ import type { GameCardProps } from "@/components/games/GameCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { getGameInstallState, getSfwImageBlurClass } from "@/lib/gamePresentation";
+import {
+  getGameInstallState,
+  getSfwImageBlurClass,
+  getStatusTextColor,
+} from "@/lib/gamePresentation";
 import { cn } from "@/lib/utils";
 
 /**
@@ -53,7 +57,7 @@ export function GameSmallCard({
   return (
     <Card
       onClick={() => onSelect(game.id)}
-      className="group cursor-pointer gap-0 overflow-hidden bg-card/60 transition hover:border-neutral-600 hover:bg-card"
+      className="group cursor-pointer gap-0 overflow-hidden bg-card/60 transition hover:border-foreground/25 hover:bg-card"
     >
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-background">
         {game.coverFile ? (
@@ -67,7 +71,7 @@ export function GameSmallCard({
             )}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-neutral-700">
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground/40">
             <ImageOff className="h-5 w-5" />
           </div>
         )}
@@ -82,7 +86,7 @@ export function GameSmallCard({
           <Badge
             variant="outline"
             className="rounded border-transparent bg-background/85 px-1 py-0 text-[9px] font-medium backdrop-blur"
-            style={{ color: statusMeta?.color ?? "#F2F2F2" }}
+            style={{ color: getStatusTextColor(game.status) }}
           >
             {statusMeta?.label ?? "Unknown"}
           </Badge>
@@ -145,7 +149,7 @@ export function GameSmallCard({
           </Badge>
 
           {game.score > 0 ? (
-            <span className="inline-flex shrink-0 items-center gap-0.5 text-amber-300">
+            <span className="inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-300">
               <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
               {game.score.toFixed(1)}
             </span>
@@ -192,9 +196,9 @@ export function GameSmallCard({
             className={cn(
               "h-6 w-6",
               isInstalledCurrent
-                ? "bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/40 hover:text-emerald-200"
+                ? "bg-emerald-600/15 text-emerald-700 hover:bg-emerald-600/25 dark:bg-emerald-600/30 dark:text-emerald-300 dark:hover:bg-emerald-600/40 dark:hover:text-emerald-200"
                 : isInstalledOld
-                  ? "bg-amber-600/30 text-amber-300 hover:bg-amber-600/40 hover:text-amber-200"
+                  ? "bg-amber-600/15 text-amber-800 hover:bg-amber-600/25 dark:bg-amber-600/30 dark:text-amber-300 dark:hover:bg-amber-600/40 dark:hover:text-amber-200"
                   : "bg-secondary text-muted-foreground hover:text-foreground"
             )}
           >
@@ -211,7 +215,7 @@ export function GameSmallCard({
             className={cn(
               "h-6 w-6",
               isFinishedCurrent
-                ? "bg-sky-600/30 text-sky-300 hover:bg-sky-600/40 hover:text-sky-200"
+                ? "bg-sky-600/15 text-sky-700 hover:bg-sky-600/25 dark:bg-sky-600/30 dark:text-sky-300 dark:hover:bg-sky-600/40 dark:hover:text-sky-200"
                 : "bg-secondary text-muted-foreground hover:text-foreground"
             )}
           >
