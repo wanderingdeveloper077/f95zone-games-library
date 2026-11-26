@@ -208,9 +208,10 @@ const systemSlice = createSlice({
         state.currentItemName = action.payload.currentGameName;
       }
     },
-    sseJobCompleted(state) {
+    sseJobCompleted(state, action: PayloadAction<IndexJob | undefined>) {
       state.activeJob = null;
       state.currentItemName = null;
+      state.lastJobError = action.payload?.errorSummary ?? null;
     },
     sseJobFailed(state, action: PayloadAction<string>) {
       state.activeJob = null;
