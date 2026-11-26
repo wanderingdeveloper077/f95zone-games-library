@@ -407,6 +407,9 @@ export async function scrapeThreadDirect(
                 data.previewsUrls.push(normalized);
               }
             }
+            data.previewsUrls = data.previewsUrls.filter(
+              (u) => u !== data.imageUrl
+            );
             if (typeof hit.ts === "number") {
               const promoted = datestampUtcNoon(hit.ts);
               const nowSec = Math.floor(Date.now() / 1000);
@@ -529,6 +532,22 @@ export async function fetchThreadFromCacheApi(
       mirrors: links.map(([label, url]) => ({ label, url })),
     }));
 
+    const imageUrl =
+      raw.image_url && raw.image_url !== "missing"
+        ? normalizeAttachmentUrl(raw.image_url)
+        : (raw.image_url ?? "missing");
+    const rawPreviews = JSON.parse(raw.previews_urls ?? "[]") as string[];
+    const previewsUrls: string[] = [];
+    const seenPreviews = new Set<string>();
+    for (const preview of rawPreviews) {
+      if (typeof preview !== "string") continue;
+      const normalized = normalizeAttachmentUrl(preview);
+      if (normalized && normalized !== imageUrl && !seenPreviews.has(normalized)) {
+        seenPreviews.add(normalized);
+        previewsUrls.push(normalized);
+      }
+    }
+
     return {
       ok: true,
       source: "cache_api",
@@ -546,8 +565,8 @@ export async function fetchThreadFromCacheApi(
         changelog: raw.changelog ?? "",
         tags: JSON.parse(raw.tags ?? "[]") as number[],
         unknownTags: JSON.parse(raw.unknown_tags ?? "[]") as string[],
-        imageUrl: raw.image_url ?? "missing",
-        previewsUrls: JSON.parse(raw.previews_urls ?? "[]") as string[],
+        imageUrl,
+        previewsUrls,
         downloads,
         reviewsTotal: Number.parseInt(raw.reviews_total ?? "0", 10) || 0,
         reviews: JSON.parse(raw.reviews ?? "[]") as Review[],
