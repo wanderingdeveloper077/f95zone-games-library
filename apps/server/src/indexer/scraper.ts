@@ -12,6 +12,9 @@ import {
 import type PQueue from "p-queue";
 import { request } from "undici";
 import {
+  BULK_VERSION_CHECK_MAX_IDS,
+  CACHE_API_FAST_MAX_IDS,
+  CACHE_API_MAX_THREAD_ID,
   type IndexerError,
   LATEST_UPDATES_CATEGORIES,
   URLS,
@@ -129,40 +132,137 @@ async function fetchWithRateRetry(
 }
 
 /**
- * Fetch latest promoted version strings from F95zone's bulk checker API (chunks of 1000).
+ * Fetch latest promoted version strings from F95zone's bulk checker API (max 100 IDs per request).
  */
 export async function fetchBulkVersions(
   threadIds: number[],
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  endpointUrl: (ids: number[]) => string = URLS.bulkVersionCheck
 ): Promise<Map<number, string>> {
   const result = new Map<number, string>();
-  const chunkSize = 1000;
+  const uniqueIds = Array.from(
+    new Set(threadIds.filter((id) => Number.isInteger(id) && id > 0))
+  );
 
-  for (let i = 0; i < threadIds.length; i += chunkSize) {
-    const chunk = threadIds.slice(i, i + chunkSize);
+  const reqHeaders: Record<string, string> = {
+    "User-Agent": headers["User-Agent"] ?? DEFAULT_FALLBACK_UA,
+    Accept: "application/json,text/plain,*/*",
+  };
+  if (headers.Cookie) {
+    reqHeaders.Cookie = headers.Cookie;
+  }
+
+  for (let i = 0; i < uniqueIds.length; i += BULK_VERSION_CHECK_MAX_IDS) {
+    const chunk = uniqueIds.slice(i, i + BULK_VERSION_CHECK_MAX_IDS);
     if (chunk.length === 0) continue;
+
+    for (let attempt = 0; attempt <= 2; attempt += 1) {
+      try {
+        const res = await request(endpointUrl(chunk), {
+          method: "GET",
+          headers: reqHeaders,
+          headersTimeout: 30_000,
+          bodyTimeout: 30_000,
+        });
+
+        if (res.statusCode === 429 && attempt < 2) {
+          await res.body.dump().catch(() => undefined);
+          await new Promise((r) => setTimeout(r, (attempt + 1) * 1000));
+          continue;
+        }
+
+        const text = await res.body.text();
+        const parsed = JSON.parse(text) as {
+          status?: string;
+          msg?: Record<string, string> | string;
+        };
+
+        if (
+          parsed.msg === "Missing threads data" ||
+          parsed.msg === "Thread not found"
+        ) {
+          break;
+        }
+
+        if (parsed.status === "ok" && parsed.msg && typeof parsed.msg === "object") {
+          for (const [idStr, ver] of Object.entries(parsed.msg)) {
+            const id = Number(idStr);
+            if (
+              Number.isInteger(id) &&
+              id > 0 &&
+              typeof ver === "string" &&
+              ver.length > 0 &&
+              ver !== "Unknown"
+            ) {
+              result.set(id, ver);
+            }
+          }
+        }
+        break;
+      } catch {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, (attempt + 1) * 1000));
+          continue;
+        }
+        // Non-fatal; fallback and individual thread scrapes can still resolve version
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Port of _reference-repo/modules/api.py:fast_check().
+ * Queries the reference Cache API (/fast?ids=...) in chunks of up to 10 valid thread IDs
+ * to detect upstream changes without scraping every thread page.
+ */
+export async function fetchFastCheckTimestamps(
+  threadIds: number[],
+  cacheApiUrl: string
+): Promise<Map<number, number>> {
+  const result = new Map<number, number>();
+  const base = cacheApiUrl.replace(/\/+$/, "");
+  const validIds = Array.from(
+    new Set(
+      threadIds.filter(
+        (id) =>
+          Number.isInteger(id) && id >= 1 && id <= CACHE_API_MAX_THREAD_ID
+      )
+    )
+  );
+
+  for (let i = 0; i < validIds.length; i += CACHE_API_FAST_MAX_IDS) {
+    const chunk = validIds.slice(i, i + CACHE_API_FAST_MAX_IDS);
+    if (chunk.length === 0) continue;
+
     try {
-      const res = await request(URLS.bulkVersionCheck(chunk), {
+      const res = await request(`${base}/fast?ids=${chunk.join(",")}`, {
         method: "GET",
-        headers: { "User-Agent": headers["User-Agent"] ?? DEFAULT_FALLBACK_UA },
         headersTimeout: 30_000,
         bodyTimeout: 30_000,
       });
-      const text = await res.body.text();
-      const parsed = JSON.parse(text) as {
-        status?: string;
-        msg?: Record<string, string> | string;
-      };
-      if (parsed.status === "ok" && parsed.msg && typeof parsed.msg === "object") {
-        for (const [idStr, ver] of Object.entries(parsed.msg)) {
-          const id = Number(idStr);
-          if (Number.isInteger(id) && ver && ver !== "Unknown") {
-            result.set(id, String(ver));
-          }
+      if (res.statusCode !== 200) {
+        await res.body.dump().catch(() => undefined);
+        continue;
+      }
+      const fastJson = (await res.body.json()) as Record<string, unknown>;
+      if (!fastJson || typeof fastJson !== "object") continue;
+
+      for (const [idStr, tsVal] of Object.entries(fastJson)) {
+        const id = Number(idStr);
+        const tsNum = typeof tsVal === "number" ? tsVal : Number(tsVal);
+        if (
+          Number.isInteger(id) &&
+          id > 0 &&
+          Number.isFinite(tsNum) &&
+          tsNum > 0
+        ) {
+          result.set(id, Math.floor(tsNum));
         }
       }
     } catch {
-      // Non-fatal; individual thread scrapes can still parse threadVersion
+      // Non-fatal; failed chunk will not abort the rest of the refresh job
     }
   }
 
@@ -362,18 +462,32 @@ export async function scrapeThreadDirect(
  */
 export async function fetchThreadFromCacheApi(
   threadId: number,
-  cacheApiUrl: string
+  cacheApiUrl: string,
+  knownBulkVersion?: string
 ): Promise<ScrapeResult> {
   const base = cacheApiUrl.replace(/\/+$/, "");
   try {
-    const fastRes = await request(`${base}/fast?ids=${threadId}`, {
-      method: "GET",
-      headersTimeout: 30_000,
-      bodyTimeout: 30_000,
-    });
-    const fastJson = (await fastRes.body.json()) as Record<string, number>;
-    const ts = Number(fastJson[String(threadId)] ?? Math.floor(Date.now() / 1000));
-    const safeTs = Math.min(ts, Math.floor(Date.now() / 1000));
+    let safeTs = Math.floor(Date.now() / 1000);
+    if (
+      Number.isInteger(threadId) &&
+      threadId >= 1 &&
+      threadId <= CACHE_API_MAX_THREAD_ID
+    ) {
+      const fastRes = await request(`${base}/fast?ids=${threadId}`, {
+        method: "GET",
+        headersTimeout: 30_000,
+        bodyTimeout: 30_000,
+      });
+      if (fastRes.statusCode === 200) {
+        const fastJson = (await fastRes.body.json()) as Record<string, number>;
+        const ts = Number(fastJson[String(threadId)] ?? safeTs);
+        if (Number.isFinite(ts) && ts > 0) {
+          safeTs = Math.min(Math.floor(ts), safeTs);
+        }
+      } else {
+        await fastRes.body.dump().catch(() => undefined);
+      }
+    }
 
     const fullRes = await request(`${base}/full/${threadId}?ts=${safeTs}`, {
       method: "GET",
@@ -420,7 +534,7 @@ export async function fetchThreadFromCacheApi(
       source: "cache_api",
       data: {
         name: raw.name,
-        version: raw.version || "N/A",
+        version: knownBulkVersion || raw.version || "N/A",
         threadVersion: raw.version || "",
         developer: raw.developer ?? "",
         type: validType,
