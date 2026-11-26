@@ -1,9 +1,22 @@
 import {
   type AccountStatusValue,
   type GameSummary,
+  STATUS_META,
+  Status,
+  type StatusId,
   TagHighlight,
   type TagHighlightId,
 } from "@game-library/shared";
+
+export function getStatusTextColor(statusId: number): string {
+  if (statusId === Status.Normal) {
+    return "var(--foreground)";
+  }
+  if (statusId === Status.Completed) {
+    return "var(--status-completed, #16a34a)";
+  }
+  return STATUS_META[statusId as StatusId]?.color ?? "var(--muted-foreground)";
+}
 
 export interface SessionStatusPresentation {
   headerLabel: string;
@@ -20,7 +33,7 @@ export const SESSION_STATUS_CONFIG: Record<
   unconfigured: {
     headerLabel: "Session: Not Paired",
     headerButtonClass:
-      "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800",
+      "border-border bg-secondary/70 text-secondary-foreground hover:bg-secondary",
     badgeVariant: "secondary",
     isWarning: false,
     bannerMessage: null,
@@ -28,7 +41,7 @@ export const SESSION_STATUS_CONFIG: Record<
   active: {
     headerLabel: "Session: Active",
     headerButtonClass:
-      "border-emerald-700/60 bg-emerald-950/50 text-emerald-300 hover:bg-emerald-950/80 hover:text-emerald-200",
+      "border-emerald-600/40 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-950/80 dark:hover:text-emerald-200",
     badgeVariant: "success",
     isWarning: false,
     bannerMessage: null,
@@ -36,7 +49,7 @@ export const SESSION_STATUS_CONFIG: Record<
   captcha_required: {
     headerLabel: "Cloudflare Challenge",
     headerButtonClass:
-      "border-amber-600/70 bg-amber-950/50 text-amber-300 hover:bg-amber-950/80 hover:text-amber-200",
+      "border-amber-600/50 bg-amber-500/15 text-amber-800 hover:bg-amber-500/25 dark:border-amber-600/70 dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-950/80 dark:hover:text-amber-200",
     badgeVariant: "warning",
     isWarning: true,
     bannerMessage:
@@ -45,7 +58,7 @@ export const SESSION_STATUS_CONFIG: Record<
   expired: {
     headerLabel: "Session Expired",
     headerButtonClass:
-      "border-rose-700/70 bg-rose-950/50 text-rose-300 hover:bg-rose-950/80 hover:text-rose-200",
+      "border-rose-600/50 bg-rose-500/15 text-rose-700 hover:bg-rose-500/25 dark:border-rose-700/70 dark:bg-rose-950/50 dark:text-rose-300 dark:hover:bg-rose-950/80 dark:hover:text-rose-200",
     badgeVariant: "destructive",
     isWarning: true,
     bannerMessage:
@@ -67,7 +80,7 @@ export interface TagHighlightPresentation {
   pillClass: string;
 }
 
-export const DEFAULT_TAG_BADGE_CLASS = "border-border bg-card text-neutral-300";
+export const DEFAULT_TAG_BADGE_CLASS = "border-border bg-card text-foreground/85";
 
 export const TAG_HIGHLIGHT_CONFIG: Record<
   TagHighlightId,
