@@ -42,7 +42,7 @@ export function StarRating({
               "h-4 w-4",
               star <= value
                 ? "fill-amber-400 text-amber-400"
-                : "text-neutral-600 hover:text-neutral-400"
+                : "text-muted-foreground/50 hover:text-muted-foreground"
             )}
           />
         </Button>
