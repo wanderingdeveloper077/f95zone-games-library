@@ -146,7 +146,7 @@ export function GameGalleryTab({
                 href={activeUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex shrink-0 items-center gap-1 text-xs text-rose-400 hover:underline"
+                className="inline-flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
               >
                 Open Full Size <ExternalLink className="h-3 w-3" />
               </a>
