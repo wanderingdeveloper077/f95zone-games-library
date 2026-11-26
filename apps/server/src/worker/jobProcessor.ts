@@ -7,6 +7,7 @@ import {
   Status,
   type SseEvent,
   cleanThreadUrl,
+  datestampUtcNoon,
 } from "@game-library/shared";
 import type { Database } from "better-sqlite3";
 import { eq, inArray } from "drizzle-orm";
@@ -32,6 +33,7 @@ import {
   type ScrapedThreadData,
   buildSessionHeaders,
   fetchBulkVersions,
+  fetchFastCheckTimestamps,
   importF95ThreadList,
 } from "../indexer/scraper.js";
 
@@ -62,6 +64,7 @@ export interface IndexJobProcessorDeps {
   fetchMetadata?: FetchThreadMetadataFn;
   importThreadList?: typeof importF95ThreadList;
   fetchBulkVersions?: typeof fetchBulkVersions;
+  fetchFastTimestamps?: typeof fetchFastCheckTimestamps;
   downloadCover?: typeof downloadCoverImage;
   coverExists?: (coverFile: string) => boolean;
   now?: () => number;
@@ -98,20 +101,35 @@ export function shouldScrapeGame(params: {
   >;
   meta: typeof schema.gameMetadata.$inferSelect | undefined;
   bulkVersion: string | undefined;
+  fastChangedAtSec?: number | undefined;
   coverExists: boolean;
   nowMs: number;
 }): boolean {
-  const { force, game, meta, bulkVersion, coverExists, nowMs } = params;
+  const {
+    force,
+    game,
+    meta,
+    bulkVersion,
+    fastChangedAtSec,
+    coverExists,
+    nowMs,
+  } = params;
   const cacheFresh =
     meta?.expiresAtMs !== null &&
     meta?.expiresAtMs !== undefined &&
     nowMs < meta.expiresAtMs;
+  const lastCheckedSec = Math.floor(game.lastCheckedAtMs / 1000);
+  const fastChanged =
+    fastChangedAtSec !== undefined &&
+    fastChangedAtSec > 0 &&
+    fastChangedAtSec > lastCheckedSec;
 
   return (
     force ||
     game.status === Status.Unchecked ||
     game.lastCheckedAtMs === 0 ||
     (Boolean(bulkVersion) && bulkVersion !== game.version) ||
+    fastChanged ||
     (!coverExists && Boolean(meta?.imageUrl?.startsWith("http"))) ||
     !cacheFresh
   );
@@ -166,6 +184,7 @@ export class IndexJobProcessor {
   private readonly fetchMetadataFn: FetchThreadMetadataFn;
   private readonly importThreadListFn: typeof importF95ThreadList;
   private readonly fetchBulkVersionsFn: typeof fetchBulkVersions;
+  private readonly fetchFastTimestampsFn: typeof fetchFastCheckTimestamps;
   private readonly downloadCoverFn: typeof downloadCoverImage;
   private readonly coverExistsFn: (coverFile: string) => boolean;
   private readonly now: () => number;
@@ -182,6 +201,8 @@ export class IndexJobProcessor {
     this.fetchMetadataFn = deps.fetchMetadata ?? defaultFetchMetadata;
     this.importThreadListFn = deps.importThreadList ?? importF95ThreadList;
     this.fetchBulkVersionsFn = deps.fetchBulkVersions ?? fetchBulkVersions;
+    this.fetchFastTimestampsFn =
+      deps.fetchFastTimestamps ?? fetchFastCheckTimestamps;
     this.downloadCoverFn = deps.downloadCover ?? downloadCoverImage;
     this.coverExistsFn =
       deps.coverExists ??
@@ -258,10 +279,19 @@ export class IndexJobProcessor {
       }
 
       const sessionHeaders = buildSessionHeaders(session);
+      const candidateIds = candidates.map((g) => g.id);
       const bulkVersions = await this.fetchBulkVersionsFn(
-        candidates.map((g) => g.id),
+        candidateIds,
         sessionHeaders
       );
+      const unresolvedIds = candidateIds.filter((id) => !bulkVersions.has(id));
+      const fastTimestamps =
+        settings.useCacheApiFallback && unresolvedIds.length > 0
+          ? await this.fetchFastTimestampsFn(
+              unresolvedIds,
+              settings.cacheApiUrl
+            )
+          : new Map<number, number>();
 
       let processedCount = 0;
       let updatedCount = 0;
@@ -290,6 +320,7 @@ export class IndexJobProcessor {
           .get();
 
         const bulkVer = bulkVersions.get(game.id);
+        const fastChangedAtSec = fastTimestamps.get(game.id);
         const coverExists =
           Boolean(game.coverFile) && this.coverExistsFn(game.coverFile!);
 
@@ -299,6 +330,7 @@ export class IndexJobProcessor {
             game,
             meta,
             bulkVersion: bulkVer,
+            fastChangedAtSec,
             coverExists,
             nowMs: this.now(),
           })
@@ -327,13 +359,26 @@ export class IndexJobProcessor {
 
         if (!scrapeRes.ok) {
           errorCount += 1;
-          lastErrorSummary = this.handleScrapeFailure(
-            game.id,
+          const failureOutcome = this.handleScrapeFailure(
+            game,
+            bulkVer,
             scrapeRes.error
           );
+          lastErrorSummary = failureOutcome.flagMsg;
+          if (failureOutcome.versionUpdated && bulkVer) {
+            updatedCount += 1;
+            this.emitEvent({
+              type: "game_updated",
+              gameId: game.id,
+              versionChanged: true,
+              name: game.name,
+              version: bulkVer,
+            });
+          }
           processedCount += 1;
           const prog = this.updateJobRow(jobId, {
             processedCount,
+            ...(failureOutcome.versionUpdated ? { updatedCount } : {}),
             errorCount,
             errorSummary: lastErrorSummary,
           });
@@ -535,32 +580,58 @@ export class IndexJobProcessor {
       .filter((g) => !g.custom && (force || !g.archived));
   }
 
-  private handleScrapeFailure(gameId: number, error: IndexerError): string {
+  private handleScrapeFailure(
+    game: typeof schema.games.$inferSelect,
+    bulkVer: string | undefined,
+    error: IndexerError
+  ): { flagMsg: string; versionUpdated: boolean } {
     const flagMsg = error.details
       ? `${error.flag}: ${error.details}`
       : error.flag;
     this.recordAccountStatusFromError(error.flag);
 
     const now = this.now();
-    this.db
-      .insert(schema.gameMetadata)
-      .values({
-        gameId,
-        lastError: flagMsg,
-        nextRetryAtMs: now + error.retryDelayMs,
-        updatedAtMs: now,
-      })
-      .onConflictDoUpdate({
-        target: schema.gameMetadata.gameId,
-        set: {
+    const versionUpdated =
+      Boolean(bulkVer) &&
+      bulkVer !== game.version &&
+      game.status !== Status.Unchecked;
+    const todayNoonTsSec = datestampUtcNoon(Math.floor(now / 1000));
+
+    this.sqlite.transaction(() => {
+      if (versionUpdated && bulkVer) {
+        this.db
+          .update(schema.games)
+          .set({
+            version: bulkVer,
+            hasUpdate: computePostScrapeHasUpdate(game, bulkVer, true),
+            lastUpdatedTsSec: Math.max(game.lastUpdatedTsSec, todayNoonTsSec),
+          })
+          .where(eq(schema.games.id, game.id))
+          .run();
+      }
+
+      this.db
+        .insert(schema.gameMetadata)
+        .values({
+          gameId: game.id,
           lastError: flagMsg,
           nextRetryAtMs: now + error.retryDelayMs,
+          ...(versionUpdated ? { expiresAtMs: 0 } : {}),
           updatedAtMs: now,
-        },
-      })
-      .run();
+        })
+        .onConflictDoUpdate({
+          target: schema.gameMetadata.gameId,
+          set: {
+            lastError: flagMsg,
+            nextRetryAtMs: now + error.retryDelayMs,
+            ...(versionUpdated ? { expiresAtMs: 0 } : {}),
+            updatedAtMs: now,
+          },
+        })
+        .run();
+    })();
 
-    return flagMsg;
+    return { flagMsg, versionUpdated };
   }
 
   private persistScrapedGame(params: {
@@ -583,6 +654,10 @@ export class IndexJobProcessor {
       data.version,
       versionChanged
     );
+    const todayNoonTsSec = datestampUtcNoon(Math.floor(nowMs / 1000));
+    const nextLastUpdatedTsSec = versionChanged
+      ? Math.max(data.lastUpdated || 0, todayNoonTsSec)
+      : data.lastUpdated || game.lastUpdatedTsSec;
     const ttlMs = hasBulkVersion ? 7 * DAY_MS : 2 * DAY_MS;
     const contentHash = computeContentHash(data);
     const changed =
@@ -599,7 +674,7 @@ export class IndexJobProcessor {
           status: data.status,
           url: cleanThreadUrl(game.id),
           hasUpdate,
-          lastUpdatedTsSec: data.lastUpdated || game.lastUpdatedTsSec,
+          lastUpdatedTsSec: nextLastUpdatedTsSec,
           lastCheckedAtMs: nowMs,
           coverFile,
         })
