@@ -209,3 +209,14 @@ pnpm build:mac:dmg       # macOS .app + .dmg (on macOS)
 ## 🙏 Credits & Acknowledgements
 
 - Inspired by and built with reference to **[F95Checker](https://github.com/WillyJL/F95Checker)** by **WillyJL** — huge thanks for pioneering the F95zone library manager ecosystem, parsing conventions, and companion extension workflow.
+
+---
+
+## 💖 Support
+
+If you find **Game Library Manager** helpful and would like to support its development, donations are greatly appreciated!
+
+- **💎 Gram Coin (GRAM/Ton Network):**
+  ```text
+  UQDwI_94-hFOZZK5sL6n4yzdyytr5ntX3LBYlnTQHXkYfUyH
+  ```
