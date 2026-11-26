@@ -275,6 +275,7 @@ export function getAppSettings(db: AppDatabase): AppSettings {
     scrapeDelayMs: row?.scrapeDelayMs ?? 1000,
     downloadGalleryImages: row?.downloadGalleryImages ?? true,
     sfwMode: row?.sfwMode ?? false,
+    theme: row?.theme ?? "dark",
     extIconGlow: row?.extIconGlow ?? true,
     extHighlightTags: row?.extHighlightTags ?? true,
     tagHighlights: row?.tagHighlightsJson ?? {},
