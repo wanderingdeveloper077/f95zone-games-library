@@ -12,8 +12,14 @@ import {
   getNextInstalledVersion,
   getSessionStatusPresentation,
   getSfwImageBlurClass,
+  getStatusTextColor,
   getTagHighlightPresentation,
 } from "@/lib/gamePresentation";
+import {
+  applyThemeToDocument,
+  isAppThemeId,
+  resolveDomTheme,
+} from "@/lib/theme";
 import { createApiClient } from "@/services/api";
 import {
   type EventSourceLike,
@@ -248,5 +254,59 @@ describe("GameGalleryTab helpers", () => {
     expect(stepGalleryIndex(3, 1, 4)).toBe(0);
     expect(stepGalleryIndex(1, 1, 4)).toBe(2);
     expect(stepGalleryIndex(0, 1, 0)).toBe(0);
+  });
+});
+
+describe("Theme helpers and status contrast", () => {
+  it("validates theme IDs and resolves DOM theme classes and data attributes", () => {
+    expect(isAppThemeId("catppuccin")).toBe(true);
+    expect(isAppThemeId("system")).toBe(true);
+    expect(isAppThemeId("unknown-theme")).toBe(false);
+
+    expect(resolveDomTheme("light", true)).toEqual({
+      effectiveTheme: "light",
+      isDark: false,
+    });
+    expect(resolveDomTheme("system", false)).toEqual({
+      effectiveTheme: "light",
+      isDark: false,
+    });
+    expect(resolveDomTheme("system", true)).toEqual({
+      effectiveTheme: "dark",
+      isDark: true,
+    });
+    expect(resolveDomTheme("emerald", false)).toEqual({
+      effectiveTheme: "emerald",
+      isDark: true,
+    });
+
+    const classes = new Set<string>(["dark"]);
+    const fakeDoc = {
+      documentElement: {
+        dataset: {} as Record<string, string>,
+        classList: {
+          toggle: (token: string, force?: boolean) => {
+            const add = force ?? !classes.has(token);
+            if (add) classes.add(token);
+            else classes.delete(token);
+            return add;
+          },
+        },
+      },
+    } as unknown as Document;
+
+    applyThemeToDocument("light", fakeDoc, true);
+    expect(classes.has("dark")).toBe(false);
+    expect(fakeDoc.documentElement.dataset.theme).toBe("light");
+
+    applyThemeToDocument("dracula", fakeDoc, false);
+    expect(classes.has("dark")).toBe(true);
+    expect(fakeDoc.documentElement.dataset.theme).toBe("dracula");
+  });
+
+  it("maps Normal and Completed status colors to theme-aware CSS variables", () => {
+    expect(getStatusTextColor(1)).toBe("var(--foreground)");
+    expect(getStatusTextColor(2)).toBe("var(--status-completed, #16a34a)");
+    expect(getStatusTextColor(3)).toBe("#0080F2");
   });
 });
