@@ -1,3 +1,4 @@
+import type { AppThemeId } from "@game-library/shared";
 import { useCallback, useEffect } from "react";
 import type {
   IndexerSettingsFormValues,
@@ -11,6 +12,7 @@ import {
   createPairingCodeThunk,
   fetchPairingStatusThunk,
   rotatePairingTokenThunk,
+  setPreviewTheme,
   setStatusNotice,
   updateSettingsThunk,
   verifyF95AccountThunk,
@@ -36,8 +38,20 @@ export function useSettingsDrawer(open: boolean) {
     if (open) {
       dispatch(clearStatusNotice());
       void dispatch(fetchPairingStatusThunk());
+    } else {
+      dispatch(setPreviewTheme(null));
     }
+    return () => {
+      dispatch(setPreviewTheme(null));
+    };
   }, [open, dispatch]);
+
+  const previewTheme = useCallback(
+    (nextTheme: AppThemeId) => {
+      dispatch(setPreviewTheme(nextTheme));
+    },
+    [dispatch]
+  );
 
   const generatePairingCode = useCallback(() => {
     void dispatch(createPairingCodeThunk());
@@ -129,6 +143,7 @@ export function useSettingsDrawer(open: boolean) {
     verifySession,
     importList,
     clearSession,
+    previewTheme,
     savePreferences,
     addTagHighlight,
     removeTagHighlight,
