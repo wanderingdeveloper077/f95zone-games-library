@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_SERVER_PORT } from "@game-library/shared";
+import { APP_VERSION, DEFAULT_SERVER_PORT } from "@game-library/shared";
 import { extractSeaRuntime, isBundledApp } from "./runtime/embedded.js";
 
 export interface ServerConfig {
@@ -156,6 +156,6 @@ export function resolveConfig(overrides?: Partial<ServerConfig>): ServerConfig {
     isDev:
       overrides?.isDev ??
       (!seaRuntime && process.env.NODE_ENV !== "production"),
-    appVersion: "1.0.0",
+    appVersion: overrides?.appVersion ?? APP_VERSION,
   };
 }
