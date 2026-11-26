@@ -1,4 +1,4 @@
-import type { AppSettings } from "@game-library/shared";
+import { APP_THEMES, type AppSettings, type AppThemeId } from "@game-library/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -12,6 +12,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   type IndexerSettingsFormValues,
@@ -20,6 +30,7 @@ import {
 
 export type IndexerPreferences = Pick<
   AppSettings,
+  | "theme"
   | "useCacheApiFallback"
   | "downloadGalleryImages"
   | "sfwMode"
@@ -31,12 +42,17 @@ export type IndexerPreferences = Pick<
 export interface IndexerSettingsFormProps {
   preferences: IndexerPreferences;
   saving: boolean;
+  onPreviewTheme?: (theme: AppThemeId) => void;
   onSave: (values: IndexerSettingsFormValues) => Promise<boolean>;
 }
+
+const MODE_THEMES = APP_THEMES.filter((item) => item.group === "mode");
+const PALETTE_THEMES = APP_THEMES.filter((item) => item.group === "palette");
 
 export function IndexerSettingsForm({
   preferences,
   saving,
+  onPreviewTheme,
   onSave,
 }: IndexerSettingsFormProps) {
   const form = useForm<IndexerSettingsFormValues>({
@@ -45,6 +61,7 @@ export function IndexerSettingsForm({
   });
 
   const {
+    theme,
     useCacheApiFallback,
     downloadGalleryImages,
     sfwMode,
@@ -55,6 +72,7 @@ export function IndexerSettingsForm({
 
   useEffect(() => {
     form.reset({
+      theme,
       useCacheApiFallback,
       downloadGalleryImages,
       sfwMode,
@@ -63,6 +81,7 @@ export function IndexerSettingsForm({
       scrapeDelayMs,
     });
   }, [
+    theme,
     useCacheApiFallback,
     downloadGalleryImages,
     sfwMode,
@@ -88,10 +107,76 @@ export function IndexerSettingsForm({
       >
         <FormField
           control={form.control}
+          name="theme"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+              <FormLabel
+                htmlFor="settings-theme-select"
+                className="font-normal text-foreground"
+              >
+                Theme
+              </FormLabel>
+              <Select
+                value={field.value}
+                onValueChange={(value) => {
+                  const next = value as AppThemeId;
+                  field.onChange(next);
+                  onPreviewTheme?.(next);
+                }}
+              >
+                <FormControl>
+                  <SelectTrigger
+                    id="settings-theme-select"
+                    className="w-44"
+                    aria-label="Theme"
+                  >
+                    <SelectValue placeholder="Choose theme" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Appearance</SelectLabel>
+                    {MODE_THEMES.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            className="size-2.5 shrink-0 rounded-full border border-border"
+                            style={{ backgroundColor: item.swatch }}
+                            aria-hidden="true"
+                          />
+                          <span>{item.label}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Color Palettes</SelectLabel>
+                    {PALETTE_THEMES.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            className="size-2.5 shrink-0 rounded-full border border-border"
+                            style={{ backgroundColor: item.swatch }}
+                            aria-hidden="true"
+                          />
+                          <span>{item.label}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
           name="useCacheApiFallback"
           render={({ field }) => (
             <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-              <FormLabel className="cursor-pointer font-normal text-neutral-300">
+              <FormLabel className="cursor-pointer font-normal text-foreground">
                 Fallback to Cache API on Cloudflare block
               </FormLabel>
               <FormControl>
@@ -109,7 +194,7 @@ export function IndexerSettingsForm({
           name="downloadGalleryImages"
           render={({ field }) => (
             <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-              <FormLabel className="cursor-pointer font-normal text-neutral-300">
+              <FormLabel className="cursor-pointer font-normal text-foreground">
                 Download gallery images on refresh
               </FormLabel>
               <FormControl>
@@ -127,7 +212,7 @@ export function IndexerSettingsForm({
           name="sfwMode"
           render={({ field }) => (
             <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-              <FormLabel className="cursor-pointer font-normal text-neutral-300">
+              <FormLabel className="cursor-pointer font-normal text-foreground">
                 SFW mode (blur covers and gallery images)
               </FormLabel>
               <FormControl>
@@ -145,7 +230,7 @@ export function IndexerSettingsForm({
           name="extIconGlow"
           render={({ field }) => (
             <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-              <FormLabel className="cursor-pointer font-normal text-neutral-300">
+              <FormLabel className="cursor-pointer font-normal text-foreground">
                 Extension icon glow on forum tiles
               </FormLabel>
               <FormControl>
@@ -163,7 +248,7 @@ export function IndexerSettingsForm({
           name="extHighlightTags"
           render={({ field }) => (
             <FormItem className="flex flex-row items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-              <FormLabel className="cursor-pointer font-normal text-neutral-300">
+              <FormLabel className="cursor-pointer font-normal text-foreground">
                 Highlight tags in UI and extension
               </FormLabel>
               <FormControl>
@@ -182,7 +267,7 @@ export function IndexerSettingsForm({
           render={({ field }) => (
             <FormItem>
               <div className="flex items-center justify-between gap-2">
-                <FormLabel className="font-normal text-neutral-300">
+                <FormLabel className="font-normal text-foreground">
                   Scrape delay (ms)
                 </FormLabel>
                 <FormControl>
