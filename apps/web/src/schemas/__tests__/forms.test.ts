@@ -11,7 +11,7 @@ import {
 } from "@/schemas/forms";
 import { ApiClientError } from "@/services/api";
 import * as systemService from "@/services/systemService";
-import { updateSettingsThunk } from "@/store/slices/systemSlice";
+import { setPreviewTheme, updateSettingsThunk } from "@/store/slices/systemSlice";
 import { createAppStore } from "@/store/store";
 
 vi.mock("@/services/systemService", async () => {
@@ -102,9 +102,10 @@ describe("Frontend Zod form schemas", () => {
     ).toBe(false);
   });
 
-  it("validates indexerSettingsFormSchema bounds and NaN handling", () => {
+  it("validates indexerSettingsFormSchema bounds, theme options, and NaN handling", () => {
     expect(
       indexerSettingsFormSchema.safeParse({
+        theme: "dark",
         useCacheApiFallback: true,
         downloadGalleryImages: true,
         sfwMode: false,
@@ -116,6 +117,7 @@ describe("Frontend Zod form schemas", () => {
 
     expect(
       indexerSettingsFormSchema.safeParse({
+        theme: "midnight",
         useCacheApiFallback: false,
         downloadGalleryImages: false,
         sfwMode: true,
@@ -125,7 +127,20 @@ describe("Frontend Zod form schemas", () => {
       }).success
     ).toBe(true);
 
+    expect(
+      indexerSettingsFormSchema.safeParse({
+        theme: "invalid-theme",
+        useCacheApiFallback: true,
+        downloadGalleryImages: true,
+        sfwMode: false,
+        extIconGlow: true,
+        extHighlightTags: true,
+        scrapeDelayMs: 1000,
+      }).success
+    ).toBe(false);
+
     const tooLow = indexerSettingsFormSchema.safeParse({
+      theme: "light",
       useCacheApiFallback: true,
       downloadGalleryImages: true,
       sfwMode: false,
@@ -139,6 +154,7 @@ describe("Frontend Zod form schemas", () => {
     }
 
     const nanRes = indexerSettingsFormSchema.safeParse({
+      theme: "system",
       useCacheApiFallback: true,
       downloadGalleryImages: true,
       sfwMode: false,
@@ -197,14 +213,18 @@ describe("systemSlice settingsSaving transitions", () => {
     vi.clearAllMocks();
   });
 
-  it("tracks settingsSaving across pending, fulfilled, and rejected states", async () => {
+  it("tracks settingsSaving, theme preview, and theme persistence across updates", async () => {
     const store = createAppStore();
+    store.dispatch(setPreviewTheme("catppuccin"));
+    expect(store.getState().system.previewTheme).toBe("catppuccin");
+
     const updatedSettings: AppSettings = {
       useCacheApiFallback: true,
       cacheApiUrl: "http://127.0.0.1:57095",
       scrapeDelayMs: 1500,
       downloadGalleryImages: false,
       sfwMode: true,
+      theme: "dracula",
       extIconGlow: false,
       extHighlightTags: true,
       tagHighlights: { "3dcg": TagHighlight.Positive },
@@ -214,13 +234,15 @@ describe("systemSlice settingsSaving transitions", () => {
       updatedSettings
     );
     const pendingPromise = store.dispatch(
-      updateSettingsThunk({ scrapeDelayMs: 1500, sfwMode: true })
+      updateSettingsThunk({ scrapeDelayMs: 1500, sfwMode: true, theme: "dracula" })
     );
     expect(store.getState().system.settingsSaving).toBe(true);
     await pendingPromise;
     expect(store.getState().system.settingsSaving).toBe(false);
     expect(store.getState().system.settings).toEqual(updatedSettings);
     expect(store.getState().system.cachedSfwMode).toBe(true);
+    expect(store.getState().system.cachedTheme).toBe("dracula");
+    expect(store.getState().system.previewTheme).toBeNull();
     expect(store.getState().system.settingsError).toBeNull();
 
     vi.mocked(systemService.updateSettings).mockRejectedValueOnce(
