@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from "react";
+import { applyThemeToDocument } from "@/lib/theme";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   cancelJobThunk,
@@ -18,11 +19,33 @@ export function useSystemStatus() {
   const sfwMode = useAppSelector(
     (s) => s.system.settings?.sfwMode ?? s.system.cachedSfwMode
   );
+  const activeTheme = useAppSelector(
+    (s) =>
+      s.system.previewTheme ??
+      s.system.settings?.theme ??
+      s.system.cachedTheme
+  );
 
   useEffect(() => {
     void dispatch(fetchAccountsThunk());
     void dispatch(fetchSettingsThunk());
   }, [dispatch]);
+
+  useEffect(() => {
+    applyThemeToDocument(activeTheme);
+    if (
+      activeTheme !== "system" ||
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return;
+    }
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => applyThemeToDocument("system");
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, [activeTheme]);
 
   const cancelJob = useCallback(
     (jobId: string) => {
