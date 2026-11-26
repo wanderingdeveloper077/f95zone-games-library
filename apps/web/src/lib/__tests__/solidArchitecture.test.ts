@@ -1,12 +1,17 @@
 import { type SseEvent, TagHighlight } from "@game-library/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildGalleryImageUrl,
+  stepGalleryIndex,
+} from "@/components/game-detail/GameGalleryTab";
+import {
   countActiveAdvancedFilters,
   formatUnixDate,
   getGameInstallState,
   getNextFinishedVersion,
   getNextInstalledVersion,
   getSessionStatusPresentation,
+  getSfwImageBlurClass,
   getTagHighlightPresentation,
 } from "@/lib/gamePresentation";
 import { createApiClient } from "@/services/api";
@@ -126,6 +131,13 @@ describe("gamePresentation utilities", () => {
       })
     ).toBe(6);
   });
+
+  it("returns blur classes only when SFW mode is enabled", () => {
+    expect(getSfwImageBlurClass(false)).toBe("");
+    expect(getSfwImageBlurClass(true)).toBe(
+      "scale-110 blur-xl group-hover:scale-110"
+    );
+  });
 });
 
 describe("DIP abstractions in apiClient and eventsService", () => {
@@ -224,5 +236,17 @@ describe("DIP abstractions in apiClient and eventsService", () => {
 
     unsubscribe();
     expect(closeSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GameGalleryTab helpers", () => {
+  it("builds safe gallery image URLs and wraps lightbox indices cleanly", () => {
+    expect(buildGalleryImageUrl(12345, "abc123.png")).toBe(
+      "/covers/gallery/12345/abc123.png"
+    );
+    expect(stepGalleryIndex(0, -1, 4)).toBe(3);
+    expect(stepGalleryIndex(3, 1, 4)).toBe(0);
+    expect(stepGalleryIndex(1, 1, 4)).toBe(2);
+    expect(stepGalleryIndex(0, 1, 0)).toBe(0);
   });
 });
