@@ -18,7 +18,7 @@ import type { GameCardProps } from "@/components/games/GameCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { getGameInstallState } from "@/lib/gamePresentation";
+import { getGameInstallState, getSfwImageBlurClass } from "@/lib/gamePresentation";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
  */
 export function GameSmallCard({
   game,
+  sfwMode = false,
   launching = false,
   onSelect,
   onPlay,
@@ -60,7 +61,10 @@ export function GameSmallCard({
             src={`/covers/${encodeURIComponent(game.coverFile)}`}
             alt={game.name}
             loading="lazy"
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+            className={cn(
+              "h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]",
+              getSfwImageBlurClass(sfwMode)
+            )}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-neutral-700">
