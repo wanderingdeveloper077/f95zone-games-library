@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `download_gallery_images` integer DEFAULT true NOT NULL;
