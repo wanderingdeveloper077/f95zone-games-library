@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `sfw_mode` integer DEFAULT false NOT NULL;
