@@ -4,6 +4,7 @@ import type { EventBroadcaster, SseClientRegistry } from "../contracts/ports.js"
 
 interface SseClient {
   id: number;
+  clientKey?: string;
   res: ServerResponse;
   heartbeat: NodeJS.Timeout;
 }
@@ -36,7 +37,7 @@ export class SseHub implements EventBroadcaster, SseClientRegistry {
     };
   }
 
-  addClient(res: ServerResponse, originHeader?: string): void {
+  addClient(res: ServerResponse, originHeader?: string, clientKey?: string): void {
     const headers: Record<string, string> = {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
@@ -57,7 +58,7 @@ export class SseHub implements EventBroadcaster, SseClientRegistry {
       }
     }, 25_000);
 
-    const client: SseClient = { id: clientId, res, heartbeat };
+    const client: SseClient = { id: clientId, clientKey, res, heartbeat };
     this.clients.add(client);
     this.notifyClientCountChange();
 
@@ -75,6 +76,26 @@ export class SseHub implements EventBroadcaster, SseClientRegistry {
       type: "connected",
       serverTimeMs: Date.now(),
     });
+  }
+
+  removeClient(clientKey: string): boolean {
+    if (!clientKey) return false;
+    let removed = false;
+    for (const client of [...this.clients]) {
+      if (client.clientKey === clientKey) {
+        clearInterval(client.heartbeat);
+        if (this.clients.delete(client)) {
+          removed = true;
+        }
+        if (!client.res.writableEnded) {
+          client.res.end();
+        }
+      }
+    }
+    if (removed) {
+      this.notifyClientCountChange();
+    }
+    return removed;
   }
 
   broadcast(event: SseEvent): void {
