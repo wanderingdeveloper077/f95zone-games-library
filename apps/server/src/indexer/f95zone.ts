@@ -15,6 +15,10 @@ export const LATEST_UPDATES_CATEGORIES = [
   "assets",
 ] as const;
 
+export const BULK_VERSION_CHECK_MAX_IDS = 100;
+export const CACHE_API_FAST_MAX_IDS = 10;
+export const CACHE_API_MAX_THREAD_ID = 999_999;
+
 export const URLS = {
   thread: (id: number) => `${F95_HOST}/threads/${id}`,
   reviews: (id: number) => `${F95_HOST}/threads/${id}/reviews/`,
