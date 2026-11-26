@@ -71,10 +71,11 @@ async function waitFor(
   throw new Error(`Condition not met within ${timeoutMs}ms`);
 }
 
-function connectSse(port: number): Promise<() => void> {
+function connectSse(port: number, clientId?: string): Promise<() => void> {
+  const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
   return new Promise((resolve, reject) => {
     const req = http.get(
-      `http://127.0.0.1:${port}/api/events`,
+      `http://127.0.0.1:${port}/api/events${qs}`,
       { headers: { Accept: "text/event-stream" } },
       (res) => {
         res.once("data", () => {
@@ -203,5 +204,99 @@ describe("SleepWakeServer idle shutdown and auto-wake", () => {
 
     await waitFor(() => gateway.getState() === "sleeping", 5000);
     expect(gateway.getState()).toBe("sleeping");
+  });
+
+  it("terminates the server completely via exitOnIdle when the last dashboard tab closes, even if a job is running", async () => {
+    const config = makeTestConfig();
+    let idleExitCalls = 0;
+    const gateway = createSleepWakeServer(config, {
+      idleGraceMs: 120,
+      unattachedWakeGraceMs: 5000,
+      exitOnIdle: true,
+      onIdleExit: () => {
+        idleExitCalls += 1;
+      },
+      startWorker: false,
+    });
+    cleanups.push(() => gateway.shutdown());
+
+    const port = await gateway.listen();
+    expect(gateway.getState()).toBe("awake");
+
+    const closeTab1 = await connectSse(port, "tab-1");
+    cleanups.push(closeTab1);
+    const closeTab2 = await connectSse(port, "tab-2");
+    cleanups.push(closeTab2);
+
+    const conn = openDatabase(config.dbPath);
+    conn.db
+      .insert(schema.indexJobs)
+      .values({
+        id: "active-job-exit-test",
+        kind: "bulk_refresh",
+        status: "running",
+        totalCount: 10,
+        processedCount: 1,
+        updatedCount: 0,
+        errorCount: 0,
+        payloadJson: "{}",
+        errorSummary: null,
+        createdAtMs: Date.now(),
+        startedAtMs: Date.now(),
+        finishedAtMs: null,
+      })
+      .run();
+    conn.sqlite.close();
+
+    // Closing the first tab while a second tab remains open must keep the server alive.
+    const beacon1 = await fetch(
+      `http://127.0.0.1:${port}/api/system/client-closing?clientId=tab-1`,
+      { method: "POST" }
+    );
+    expect(beacon1.status).toBe(204);
+    closeTab1();
+
+    await new Promise((r) => setTimeout(r, 250));
+    expect(gateway.getState()).toBe("awake");
+    expect(idleExitCalls).toBe(0);
+
+    // Closing the last remaining tab terminates immediately regardless of active job.
+    const beacon2 = await fetch(
+      `http://127.0.0.1:${port}/api/system/client-closing?clientId=tab-2`,
+      { method: "POST" }
+    );
+    expect(beacon2.status).toBe(204);
+    closeTab2();
+
+    await waitFor(() => gateway.getState() === "stopped", 4000);
+    expect(idleExitCalls).toBe(1);
+    await expect(fetch(`http://127.0.0.1:${port}/api/health`)).rejects.toThrow();
+  });
+
+  it("cancels exitOnIdle shutdown when the tab reloads and reconnects within idleGraceMs", async () => {
+    const config = makeTestConfig();
+    let idleExitCalls = 0;
+    const gateway = createSleepWakeServer(config, {
+      idleGraceMs: 250,
+      unattachedWakeGraceMs: 5000,
+      exitOnIdle: true,
+      onIdleExit: () => {
+        idleExitCalls += 1;
+      },
+      startWorker: false,
+    });
+    cleanups.push(() => gateway.shutdown());
+
+    const port = await gateway.listen();
+    const closeTab1 = await connectSse(port, "tab-reload-1");
+    closeTab1();
+
+    await new Promise((r) => setTimeout(r, 60));
+    const closeTab2 = await connectSse(port, "tab-reload-2");
+    cleanups.push(closeTab2);
+
+    await new Promise((r) => setTimeout(r, 350));
+    expect(gateway.getState()).toBe("awake");
+    expect(idleExitCalls).toBe(0);
   });
 });
