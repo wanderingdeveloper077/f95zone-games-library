@@ -20,12 +20,42 @@ import {
   verifyF95Account,
 } from "@/services/systemService";
 
+export const SFW_MODE_STORAGE_KEY = "gl_sfw_mode";
+
+function readInitialSfwMode(): boolean {
+  try {
+    if (
+      typeof localStorage !== "undefined" &&
+      typeof localStorage.getItem === "function"
+    ) {
+      return localStorage.getItem(SFW_MODE_STORAGE_KEY) === "1";
+    }
+  } catch {
+    // Ignore storage read errors.
+  }
+  return false;
+}
+
+function persistSfwMode(enabled: boolean): void {
+  try {
+    if (
+      typeof localStorage !== "undefined" &&
+      typeof localStorage.setItem === "function"
+    ) {
+      localStorage.setItem(SFW_MODE_STORAGE_KEY, enabled ? "1" : "0");
+    }
+  } catch {
+    // Ignore storage write errors.
+  }
+}
+
 export interface SystemState {
   accounts: AccountStatus[];
   accountsLoading: boolean;
   accountsError: string | null;
   verifyingAccount: boolean;
   settings: AppSettings | null;
+  cachedSfwMode: boolean;
   settingsLoading: boolean;
   settingsSaving: boolean;
   settingsError: string | null;
@@ -46,6 +76,7 @@ const initialState: SystemState = {
   accountsError: null,
   verifyingAccount: false,
   settings: null,
+  cachedSfwMode: readInitialSfwMode(),
   settingsLoading: false,
   settingsSaving: false,
   settingsError: null,
@@ -286,6 +317,8 @@ const systemSlice = createSlice({
       .addCase(fetchSettingsThunk.fulfilled, (state, action) => {
         state.settingsLoading = false;
         state.settings = action.payload;
+        state.cachedSfwMode = action.payload.sfwMode;
+        persistSfwMode(action.payload.sfwMode);
       })
       .addCase(fetchSettingsThunk.rejected, (state, action) => {
         state.settingsLoading = false;
@@ -302,6 +335,8 @@ const systemSlice = createSlice({
       .addCase(updateSettingsThunk.fulfilled, (state, action) => {
         state.settingsSaving = false;
         state.settings = action.payload;
+        state.cachedSfwMode = action.payload.sfwMode;
+        persistSfwMode(action.payload.sfwMode);
       })
       .addCase(updateSettingsThunk.rejected, (state, action) => {
         state.settingsSaving = false;
