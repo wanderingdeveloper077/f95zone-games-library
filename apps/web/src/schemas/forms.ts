@@ -1,4 +1,8 @@
-import { TagHighlight, extractThreadMatches } from "@game-library/shared";
+import {
+  AppThemeIdSchema,
+  TagHighlight,
+  extractThreadMatches,
+} from "@game-library/shared";
 import { z } from "zod";
 
 export const addF95UrlsFormSchema = z.object({
@@ -51,6 +55,7 @@ export const addExecutableFormSchema = z.object({
 export type AddExecutableFormValues = z.infer<typeof addExecutableFormSchema>;
 
 export const indexerSettingsFormSchema = z.object({
+  theme: AppThemeIdSchema,
   useCacheApiFallback: z.boolean(),
   downloadGalleryImages: z.boolean(),
   sfwMode: z.boolean(),
