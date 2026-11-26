@@ -3,7 +3,7 @@ import type {
   ExtensionBootstrapResponse,
   UpdateAppSettings,
 } from "@game-library/shared";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { AppDatabase } from "../db/index.js";
 import {
   getAppSettings,
@@ -31,6 +31,8 @@ export class SettingsService {
   }
 
   updateSettings(patch: UpdateAppSettings): AppSettings {
+    const previous = getAppSettings(this.db);
+
     this.db
       .update(schema.appSettings)
       .set({
@@ -43,6 +45,10 @@ export class SettingsService {
         ...(patch.scrapeDelayMs !== undefined
           ? { scrapeDelayMs: patch.scrapeDelayMs }
           : {}),
+        ...(patch.downloadGalleryImages !== undefined
+          ? { downloadGalleryImages: patch.downloadGalleryImages }
+          : {}),
+        ...(patch.sfwMode !== undefined ? { sfwMode: patch.sfwMode } : {}),
         ...(patch.extIconGlow !== undefined
           ? { extIconGlow: patch.extIconGlow }
           : {}),
@@ -56,6 +62,20 @@ export class SettingsService {
       })
       .where(eq(schema.appSettings.id, 0))
       .run();
+
+    if (!previous.downloadGalleryImages && patch.downloadGalleryImages === true) {
+      this.db
+        .update(schema.gameMetadata)
+        .set({ expiresAtMs: 0 })
+        .where(
+          and(
+            isNotNull(schema.gameMetadata.expiresAtMs),
+            sql`${schema.gameMetadata.previewsUrlsJson} != '[]'`,
+            sql`${schema.gameMetadata.galleryFilesJson} = '[]'`
+          )
+        )
+        .run();
+    }
 
     return getAppSettings(this.db);
   }
