@@ -10,7 +10,11 @@ import { GameStateActions } from "@/components/games/GameStateActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { formatUnixDate, getSfwImageBlurClass } from "@/lib/gamePresentation";
+import {
+  formatUnixDate,
+  getSfwImageBlurClass,
+  getStatusTextColor,
+} from "@/lib/gamePresentation";
 import { cn } from "@/lib/utils";
 
 export interface GameCardProps {
@@ -39,7 +43,7 @@ export function GameCard({
   return (
     <Card
       onClick={() => onSelect(game.id)}
-      className="group cursor-pointer gap-0 overflow-hidden bg-card/60 transition hover:border-neutral-600 hover:bg-card"
+      className="group cursor-pointer gap-0 overflow-hidden bg-card/60 transition hover:border-foreground/25 hover:bg-card"
     >
       <div className="relative aspect-[16/7] w-full overflow-hidden bg-background">
         {game.coverFile ? (
@@ -53,7 +57,7 @@ export function GameCard({
             )}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-neutral-700">
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground/40">
             <ImageOff className="h-8 w-8" />
           </div>
         )}
@@ -68,7 +72,7 @@ export function GameCard({
           <Badge
             variant="outline"
             className="rounded border-transparent bg-background/85 px-1.5 py-0.5 text-[10px] font-medium backdrop-blur"
-            style={{ color: statusMeta?.color ?? "#F2F2F2" }}
+            style={{ color: getStatusTextColor(game.status) }}
           >
             {statusMeta?.label ?? "Unknown"}
           </Badge>
@@ -121,7 +125,7 @@ export function GameCard({
             {game.developer || "Unknown developer"}
           </p>
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[11px] text-foreground">
             <Badge variant="secondary" className="rounded font-mono">
               {game.version}
             </Badge>
@@ -129,7 +133,7 @@ export function GameCard({
               {formatUnixDate(game.lastUpdatedTsSec)}
             </span>
             {game.score > 0 && (
-              <span className="ml-auto inline-flex items-center gap-1 text-amber-300">
+              <span className="ml-auto inline-flex items-center gap-1 text-amber-600 dark:text-amber-300">
                 <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                 {game.score.toFixed(1)}
                 <span className="text-muted-foreground">({game.votes})</span>
