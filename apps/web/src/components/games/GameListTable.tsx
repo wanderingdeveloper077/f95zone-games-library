@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatUnixDate } from "@/lib/gamePresentation";
+import { formatUnixDate, getStatusTextColor } from "@/lib/gamePresentation";
 import { cn } from "@/lib/utils";
 
 export interface GameListTableProps {
@@ -91,17 +91,17 @@ export function GameListTable({
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <span style={{ color: statusMeta?.color ?? "#ccc" }}>
+                  <span style={{ color: getStatusTextColor(g.status) }}>
                     {statusMeta?.label ?? "Unknown"}
                   </span>
                 </TableCell>
-                <TableCell className="font-mono text-neutral-300">
+                <TableCell className="font-mono text-foreground">
                   {g.version}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatUnixDate(g.lastUpdatedTsSec)}
                 </TableCell>
-                <TableCell className="text-neutral-300">
+                <TableCell className="text-foreground">
                   {g.score > 0 ? `${g.score.toFixed(1)} (${g.votes})` : "—"}
                 </TableCell>
                 <TableCell
