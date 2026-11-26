@@ -1,20 +1,29 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import type { ExtensionBootstrapResponse } from "@game-library/shared";
 import { type BuiltApp, buildApp } from "../app.js";
-import { isAllowedCorsOrigin, type PairingManager } from "../auth/pairing.js";
+import {
+  isAllowedCorsOrigin,
+  isLocalUiOrigin,
+  type PairingManager,
+} from "../auth/pairing.js";
 import type { ServerConfig } from "../config.js";
 
 export type ServerLifecycleState =
   | "awake"
   | "suspending"
   | "sleeping"
-  | "waking";
+  | "waking"
+  | "stopped";
 
 export interface SleepWakeServerOptions {
   /** Delay after the last dashboard SSE client closes before suspending (default: 3500ms). */
   idleGraceMs?: number;
   /** Delay after an API-only wake or startup without an SSE dashboard client (default: 15000ms). */
   unattachedWakeGraceMs?: number;
+  /** When true, permanently terminate the server instead of sleeping when idle. */
+  exitOnIdle?: boolean;
+  /** Callback invoked after clean shutdown completes in exitOnIdle mode. */
+  onIdleExit?: () => void;
   startWorker?: boolean;
 }
 
@@ -82,6 +91,7 @@ export function createSleepWakeServer(
 ): SleepWakeServer {
   const idleGraceMs = options?.idleGraceMs ?? 3500;
   const unattachedWakeGraceMs = options?.unattachedWakeGraceMs ?? 15000;
+  const exitOnIdle = options?.exitOnIdle ?? false;
   const startWorker = options?.startWorker ?? true;
 
   let boundPort = config.port;
@@ -180,6 +190,12 @@ export function createSleepWakeServer(
   const evaluateIdle = async (): Promise<void> => {
     if (disposed || state !== "awake" || !built) return;
     if (built.sseHub.clientCount > 0) return;
+
+    if (exitOnIdle) {
+      await shutdown();
+      options?.onIdleExit?.();
+      return;
+    }
 
     if (built.hasActiveJobs()) {
       if (!loggedWaitingForJob) {
@@ -331,7 +347,13 @@ export function createSleepWakeServer(
       const active =
         state === "awake" && built ? built : await ensureAwake();
 
-      if (active.sseHub.clientCount === 0 && pathname !== "/api/health") {
+      if (
+        active.sseHub.clientCount === 0 &&
+        pathname !== "/api/health" &&
+        pathname !== "/api/system/client-closing" &&
+        !pathname.startsWith("/api/extension/") &&
+        isLocalUiOrigin(req.headers.origin)
+      ) {
         scheduleIdleCheck(
           hadDashboardClient ? idleGraceMs : unattachedWakeGraceMs
         );
@@ -407,8 +429,10 @@ export function createSleepWakeServer(
     }
 
     httpServer.closeAllConnections?.();
-    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    state = "sleeping";
+    if (httpServer.listening) {
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
+    state = "stopped";
   };
 
   return {
