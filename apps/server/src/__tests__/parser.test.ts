@@ -166,6 +166,52 @@ describe("F95zone parsers and classifiers", () => {
     expect(
       normalizeAttachmentUrl("https://preview.f95zone.to/a/b.png?h=secret")
     ).toBe("https://attachments.f95zone.to/a/b.png");
+    expect(
+      normalizeAttachmentUrl(
+        "https://attachments.f95zone.com/2025/02/thumb/pic.webp?h=abc"
+      )
+    ).toBe("https://attachments.f95zone.to/2025/02/pic.webp");
+  });
+
+  it("extracts all starter-post attachment images excluding the cover and non-image archives", () => {
+    const html = `<html><body>
+      <div class="p-body-header">
+        <h1 class="p-title-value"><span class="p-title-prefix">Ren'Py</span> Gallery Game</h1>
+      </div>
+      <article class="message-threadStarterPost">
+        <article>
+          <div class="bbWrapper">
+            <div data-src="https://preview.f95zone.to/2025/01/cover.jpg?h=cov"></div>
+            <a class="js-lbImage" href="https://attachments.f95zone.to/2025/01/cover.jpg?h=dup">Cover Duplicate</a>
+            <a class="js-lbImage" href="https://attachments.f95zone.to/2025/01/screen1.png?h=1">
+              <img src="https://attachments.f95zone.to/2025/01/thumb/screen1.png" />
+            </a>
+            <div class="js-lbImage" data-src="https://attachments.f95zone.com/2025/01/screen2.webp?h=2"></div>
+            <div data-src="https://preview.f95zone.ninja/2025/01/screen3.jpg"></div>
+            <img class="bbImage" src="https://attachments.f95zone.to/2025/01/thumb/screen4.png" />
+            <a href="https://attachments.f95zone.to/2025/01/patch.zip">Patch</a>
+          </div>
+          <section class="message-attachments">
+            <a href="https://attachments.f95zone.to/2025/01/attach5.gif?h=5">Attach 5</a>
+          </section>
+        </article>
+      </article>
+    </body></html>`;
+
+    const res = parseThreadHtml(html);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+
+    expect(res.data.imageUrl).toBe(
+      "https://attachments.f95zone.to/2025/01/cover.jpg"
+    );
+    expect(res.data.previewsUrls).toEqual([
+      "https://attachments.f95zone.to/2025/01/screen1.png",
+      "https://attachments.f95zone.to/2025/01/screen2.webp",
+      "https://attachments.f95zone.to/2025/01/screen3.jpg",
+      "https://attachments.f95zone.to/2025/01/screen4.png",
+      "https://attachments.f95zone.to/2025/01/attach5.gif",
+    ]);
   });
 
   it("classifies F95zone error states accurately", () => {
