@@ -55,7 +55,7 @@ export function GameNotesForm({
           render={({ field }) => (
             <FormItem>
               <div className="flex items-center justify-between">
-                <FormLabel className="text-neutral-300">
+                <FormLabel className="text-foreground">
                   Personal Notes
                 </FormLabel>
                 <Button
