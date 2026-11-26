@@ -116,6 +116,8 @@ export function initializeDatabase(
       useCacheApiFallback: true,
       cacheApiUrl: "https://api.f95checker.dev",
       scrapeDelayMs: 1000,
+      downloadGalleryImages: true,
+      sfwMode: false,
       extIconGlow: true,
       extHighlightTags: true,
       tagHighlightsJson: {},
