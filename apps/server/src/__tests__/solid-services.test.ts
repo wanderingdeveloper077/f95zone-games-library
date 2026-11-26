@@ -19,8 +19,12 @@ import type {
 } from "../contracts/ports.js";
 import { createAesGcmCipher } from "../db/crypto.js";
 import { initializeDatabase, openDatabase } from "../db/index.js";
-import { createJobRecord } from "../db/queries.js";
+import { createJobRecord, getGameDetail } from "../db/queries.js";
 import * as schema from "../db/schema.js";
+import {
+  deleteGalleryFiles,
+  downloadGalleryImages,
+} from "../indexer/images.js";
 import {
   CacheApiMetadataProvider,
   type MetadataProvider,
@@ -34,6 +38,7 @@ import {
 import { AccountsService } from "../services/accountsService.js";
 import { isUriTarget } from "../services/gameLauncher.js";
 import { GamesService } from "../services/gamesService.js";
+import { SettingsService } from "../services/settingsService.js";
 import { IndexJobProcessor } from "../worker/jobProcessor.js";
 
 const migrationsDir = path.resolve(
@@ -897,5 +902,224 @@ describe("Bulk checker, /fast change check, and Refresh All version detection", 
         threadVersion: "v0.9",
       },
     });
+  });
+});
+
+describe("Gallery attachment downloading, caching, pruning, and job persistence", () => {
+  const PNG_BYTES = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00,
+  ]);
+  const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+  it("downloads gallery attachments excluding cover, reuses cached files, prunes stale files, and cleans up", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gl-gallery-dl-"));
+    cleanups.push(() => {
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    const requestedPaths: string[] = [];
+    const baseUrl = await startMockHttpServer((req, res) => {
+      requestedPaths.push(req.url ?? "");
+      if (req.url === "/img1") {
+        res.writeHead(200, { "content-type": "image/png" });
+        res.end(PNG_BYTES);
+        return;
+      }
+      if (req.url === "/img2") {
+        res.writeHead(200, { "content-type": "image/jpeg" });
+        res.end(JPEG_BYTES);
+        return;
+      }
+      if (req.url === "/cover") {
+        res.writeHead(200, { "content-type": "image/png" });
+        res.end(PNG_BYTES);
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const coverUrl = `${baseUrl}/cover`;
+    const url1 = `${baseUrl}/img1`;
+    const url2 = `${baseUrl}/img2`;
+
+    const first = await downloadGalleryImages(
+      [coverUrl, url1, url2, url1],
+      42,
+      dir,
+      {},
+      { excludeUrls: [coverUrl] }
+    );
+    expect(first).toHaveLength(2);
+    expect(first[0]).toMatch(/^[a-f0-9]{40}\.png$/);
+    expect(first[1]).toMatch(/^[a-f0-9]{40}\.jpg$/);
+    expect(requestedPaths).toEqual(["/img1", "/img2"]);
+
+    // Second run with same url1 & dropped url2 reuses cached url1 without HTTP and prunes url2
+    requestedPaths.length = 0;
+    const second = await downloadGalleryImages([url1], 42, dir, {}, {
+      excludeUrls: [coverUrl],
+    });
+    expect(second).toEqual([first[0]]);
+    expect(requestedPaths).toEqual([]);
+
+    const gameGalleryDir = path.join(dir, "gallery", "42");
+    expect(fs.readdirSync(gameGalleryDir)).toEqual([first[0]]);
+
+    await deleteGalleryFiles(42, dir);
+    expect(fs.existsSync(gameGalleryDir)).toBe(false);
+  });
+
+  it("persists galleryFiles in game_metadata during IndexJobProcessor runs", async () => {
+    const { coversDir, conn } = createTempDb();
+    const cipher = createAesGcmCipher(crypto.randomBytes(32));
+    const events: SseEvent[] = [];
+
+    conn.db
+      .insert(schema.games)
+      .values({
+        id: 950,
+        custom: false,
+        name: "Gallery Job Game",
+        version: "Unchecked",
+        status: Status.Unchecked,
+        type: Type.RenPy,
+        addedAtMs: 1000,
+      })
+      .run();
+
+    const baseUrl = await startMockHttpServer((req, res) => {
+      if (req.url === "/cover") {
+        res.writeHead(200, { "content-type": "image/png" });
+        res.end(PNG_BYTES);
+        return;
+      }
+      if (req.url === "/shot1") {
+        res.writeHead(200, { "content-type": "image/jpeg" });
+        res.end(JPEG_BYTES);
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const job = createJobRecord(conn.db, "single_thread", 1, {
+      gameIds: [950],
+      force: true,
+    });
+
+    const processor = new IndexJobProcessor({
+      db: conn.db,
+      sqlite: conn.sqlite,
+      coversDir,
+      cipher,
+      emitEvent: (ev) => events.push(ev),
+      fetchBulkVersions: async () => new Map([[950, "v1.0"]]),
+      fetchMetadata: async () => ({
+        ok: true,
+        source: "direct",
+        data: makeScrapedData({
+          name: "Gallery Job Game",
+          version: "v1.0",
+          imageUrl: `${baseUrl}/cover`,
+          previewsUrls: [`${baseUrl}/cover`, `${baseUrl}/shot1`],
+        }),
+      }),
+    });
+
+    await processor.processJob(job.id, "single_thread", [950], true);
+
+    const detail = getGameDetail(conn.db, 950);
+    expect(detail?.coverFile).toBe("950.png");
+    expect(detail?.galleryFiles).toHaveLength(1);
+    expect(detail?.galleryFiles[0]).toMatch(/^[a-f0-9]{40}\.jpg$/);
+    expect(
+      fs.existsSync(
+        path.join(coversDir, "gallery", "950", detail!.galleryFiles[0]!)
+      )
+    ).toBe(true);
+    expect(events.some((e) => e.type === "job_completed")).toBe(true);
+  });
+
+  it("skips gallery downloads when downloadGalleryImages setting is off and downloads on next refresh after turning it back on", async () => {
+    const { coversDir, conn } = createTempDb();
+    const cipher = createAesGcmCipher(crypto.randomBytes(32));
+    const events: SseEvent[] = [];
+    const settingsService = new SettingsService({ db: conn.db });
+
+    settingsService.updateSettings({ downloadGalleryImages: false });
+
+    conn.db
+      .insert(schema.games)
+      .values({
+        id: 960,
+        custom: false,
+        name: "Gallery Toggle Game",
+        version: "Unchecked",
+        status: Status.Unchecked,
+        type: Type.RenPy,
+        addedAtMs: 1000,
+      })
+      .run();
+
+    const requestedUrls: string[] = [];
+    const baseUrl = await startMockHttpServer((req, res) => {
+      requestedUrls.push(req.url ?? "");
+      if (req.url === "/cover") {
+        res.writeHead(200, { "content-type": "image/png" });
+        res.end(PNG_BYTES);
+        return;
+      }
+      if (req.url === "/shot1") {
+        res.writeHead(200, { "content-type": "image/jpeg" });
+        res.end(JPEG_BYTES);
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const processor = new IndexJobProcessor({
+      db: conn.db,
+      sqlite: conn.sqlite,
+      coversDir,
+      cipher,
+      emitEvent: (ev) => events.push(ev),
+      fetchBulkVersions: async () => new Map([[960, "v1.0"]]),
+      fetchMetadata: async () => ({
+        ok: true,
+        source: "direct",
+        data: makeScrapedData({
+          name: "Gallery Toggle Game",
+          version: "v1.0",
+          imageUrl: `${baseUrl}/cover`,
+          previewsUrls: [`${baseUrl}/shot1`],
+        }),
+      }),
+    });
+
+    const job1 = createJobRecord(conn.db, "single_thread", 1, {
+      gameIds: [960],
+      force: true,
+    });
+    await processor.processJob(job1.id, "single_thread", [960], true);
+
+    expect(requestedUrls).toEqual(["/cover"]);
+    expect(getGameDetail(conn.db, 960)?.galleryFiles).toEqual([]);
+    expect(getGameDetail(conn.db, 960)?.previewsUrls).toEqual([
+      `${baseUrl}/shot1`,
+    ]);
+
+    // Turning gallery downloads back on resets expiresAtMs so a non-forced refresh fetches the gallery.
+    requestedUrls.length = 0;
+    settingsService.updateSettings({ downloadGalleryImages: true });
+
+    const job2 = createJobRecord(conn.db, "bulk_refresh", 1, { force: false });
+    await processor.processJob(job2.id, "bulk_refresh", undefined, false);
+
+    expect(requestedUrls).toEqual(["/shot1"]);
+    const detailAfter = getGameDetail(conn.db, 960);
+    expect(detailAfter?.galleryFiles).toHaveLength(1);
+    expect(detailAfter?.galleryFiles[0]).toMatch(/^[a-f0-9]{40}\.jpg$/);
   });
 });
