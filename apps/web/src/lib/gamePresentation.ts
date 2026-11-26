@@ -161,3 +161,7 @@ export function countActiveAdvancedFilters(filter: {
     filter.tags.length
   );
 }
+
+export function getSfwImageBlurClass(sfwMode: boolean): string {
+  return sfwMode ? "scale-110 blur-xl group-hover:scale-110" : "";
+}
